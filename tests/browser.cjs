@@ -9,7 +9,7 @@ async function main() {
   const root = path.resolve(__dirname, '..');
   const files = new Map([['/', ['index.html', 'text/html']], ['/styles.css', ['styles.css', 'text/css']], ['/probe.js', ['probe.js', 'text/javascript']], ['/app.js', ['app.js', 'text/javascript']]]);
   const server = http.createServer(async (req, res) => {
-    const asset = files.get(req.url);
+    const asset = files.get(new URL(req.url, 'http://127.0.0.1').pathname);
     if (!asset) { res.writeHead(404); res.end(); return; }
     try { res.writeHead(200, { 'Content-Type': asset[1] }); res.end(await fs.readFile(path.join(root, asset[0]))); }
     catch { res.writeHead(500); res.end(); }
