@@ -16,6 +16,7 @@ The serial chooser check is optional and does not open or write to any port. No 
 ## What the results mean
 
 - Selection is not a successful protocol connection. GATT connection is not Windows audio status or AAP control access.
+- Reports from probe 0.2.0 distinguish chooser failures (`selection: not-selected`), GATT failures (`gatt: not-connected`), and standard-service read failures. A chooser error does not establish that services were inspected. Repeated GATT failures may be a transport limitation; repeated unchanged retries are not a workaround.
 - Only standard Battery and Device Information services are requested. Missing/denied services do **not** prove the absence of private services. Browser service grants limit discovery.
 - A battery value is a one-time, unassigned standard value; no left/right/case mapping, continuous monitoring, or charging status is inferred.
 - Raw advertisements, Bluetooth addresses, browser device IDs, selected names, and raw browser exception messages are omitted from reports. Standard model/firmware strings are included if read; review them before sharing.

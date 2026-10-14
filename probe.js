@@ -3,16 +3,25 @@
   'use strict';
   const SERVICES = Object.freeze(['battery_service', 'device_information']);
   const HELP = Object.freeze({
-    NotFoundError: 'The requested standard service or characteristic was not found, or the chooser was canceled. This does not rule out private services.',
+    NotFoundError: 'The requested item was not available. See the recorded operation; this does not establish the absence of private services.',
     NotAllowedError: 'Access was denied or the chooser was canceled. Check the site permission and try again.',
     SecurityError: 'Browser permission or policy blocked this operation. No conclusion about private services can be drawn.',
-    NetworkError: 'The Bluetooth connection failed or was lost. Keep the device nearby and try again.',
+    NetworkError: 'The Bluetooth operation failed or the connection was lost. This may reflect a transport limitation, not just distance or pairing.',
     NotSupportedError: 'This browser or device does not support the requested operation.',
     TimeoutError: 'The operation exceeded its time limit. The requested result was not established; disconnect and try again.',
     InvalidStateError: 'The device or browser connection is not ready. Disconnect and try again.'
   });
-  function explain(error) {
+  function explain(error, operation) {
     const name = typeof error?.name === 'string' && Object.hasOwn(HELP, error.name) ? error.name : 'OtherError';
+    if (name === 'NotFoundError' && (operation === 'selection' || operation === 'serial')) {
+      return { name, explanation: 'No device or port was selected: the chooser was canceled or no matching entry was available. GATT and device services were not tested by this attempt.' };
+    }
+    if (name === 'NetworkError' && operation === 'gatt') {
+      return { name, explanation: 'The selected device could not open a browser GATT connection. Windows audio pairing does not establish GATT access. No services were read; repeated failure here may be a transport limitation.' };
+    }
+    if (name === 'NotFoundError' && ['battery', 'model', 'firmware'].includes(operation)) {
+      return { name, explanation: 'The requested standard service or characteristic was not found. This is a service-read result, not chooser cancellation; private services remain untested.' };
+    }
     return { name, explanation: HELP[name] || 'The operation failed. The report omits the raw error message to protect device information.' };
   }
   function batteryValue(view) {
@@ -49,7 +58,7 @@
     }
     update(values = {}) { Object.assign(this.state, values); this.dispatchEvent(new Event('change')); }
     record(check, outcome, detail, error = null) {
-      this.state.checks.push({ time: new Date().toISOString(), check, outcome, detail, ...(error ? { error: explain(error) } : {}) });
+      this.state.checks.push({ time: new Date().toISOString(), check, outcome, detail, ...(error ? { error: explain(error, check) } : {}) });
       this.state.checks = this.state.checks.slice(-50);
       this.update();
     }
@@ -64,11 +73,13 @@
       const epoch = ++this.epoch;
       this.busy = true;
       this.update({ phase: 'selecting', status: 'Select your AirPods in the browser chooser. Device selection is not proof of management support.' });
+      let operation = 'selection';
       try {
         const options = { acceptAllDevices: true, optionalServices: [...SERVICES] };
         if (includeBroadcasts) options.optionalManufacturerData = [0x004c];
         const device = await this.nav.bluetooth.requestDevice(options);
         if (epoch !== this.epoch) return;
+        operation = 'gatt';
         this.device = device;
         this.gattDisconnectListener = () => {
           if (this.device !== device) return;
@@ -110,8 +121,9 @@
         this.update({ phase: this.state.connected ? 'complete' : 'disconnected', status: this.state.battery !== null ? 'A standard battery value was read. Its component and reliability still need validation.' : 'Standard-service checks finished without a battery value. Private AirPods services remain untested.' });
       } catch (error) {
         if (epoch !== this.epoch) return;
-        this.record('connection', 'not-established', explain(error).explanation, error);
-        this.update({ phase: 'complete', connected: false, status: explain(error).explanation });
+        const detail = explain(error, operation).explanation;
+        this.record(operation, operation === 'selection' ? 'not-selected' : 'not-connected', detail, error);
+        this.update({ phase: 'complete', connected: false, status: detail });
       } finally {
         if (epoch === this.epoch) { this.busy = false; this.update(); }
       }
@@ -209,7 +221,7 @@
     }
     report() {
       return {
-        schemaVersion: 1, probeVersion: '0.1.0', exportedAt: new Date().toISOString(),
+        schemaVersion: 1, probeVersion: '0.2.0', exportedAt: new Date().toISOString(),
         scope: 'Read-only browser feasibility. No AirPods control transport or exact model identity is established.',
         capabilities: { ...this.state.capabilities },
         session: { phase: this.state.phase, selected: this.state.selected, gattConnected: this.state.connected },

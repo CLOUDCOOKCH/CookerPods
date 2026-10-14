@@ -77,6 +77,37 @@ test('insecure origin never invokes a chooser', async () => {
   await p.connect(); assert.equal(invoked, false);
   assert.equal(p.state.capabilities.bluetooth, false);
 });
+test('chooser cancellation does not imply standard services were checked', async () => {
+  const p = new Probe({ navigator: { bluetooth: { requestDevice: async () => { throw namedError('NotFoundError'); } } } });
+  await p.connect();
+  const result = p.state.checks.at(-1);
+  assert.equal(result.check, 'selection');
+  assert.equal(result.outcome, 'not-selected');
+  assert.match(result.error.explanation, /services were not tested/);
+  assert.doesNotMatch(result.error.explanation, /characteristic was not found/);
+});
+test('GATT failure is recorded before service reads and does not promise a retry fix', async () => {
+  const d = device({ failConnect: true });
+  const p = probeFor(d); await p.connect();
+  const result = p.state.checks.at(-1);
+  assert.equal(p.state.selected, true);
+  assert.equal(result.check, 'gatt');
+  assert.equal(result.outcome, 'not-connected');
+  assert.equal(result.error.name, 'NetworkError');
+  assert.match(result.error.explanation, /No services were read/);
+  assert.match(result.error.explanation, /transport limitation/);
+  assert.deepEqual(d.reads, []);
+  p.disconnect();
+});
+test('missing services are separate from chooser cancellation in exported errors', async () => {
+  const p = probeFor(device({ absent: ['battery_service'] }));
+  await p.connect();
+  const result = p.report().checks.find(c => c.check === 'battery');
+  assert.equal(result.outcome, 'not-read');
+  assert.match(result.error.explanation, /service-read result/);
+  assert.equal(p.report().probeVersion, '0.2.0');
+  p.disconnect();
+});
 test('canceled pending selection cannot overwrite a newer session', async () => {
   let resolve;
   const d = device();
