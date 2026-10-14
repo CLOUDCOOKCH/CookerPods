@@ -25,6 +25,10 @@ input { accent-color: var(--blue); width: 18px; height: 18px; margin: 3px 0 0; f
 .hint { color: var(--muted); font-size: 13px; }
 .choice .hint { display: block; margin-top: 3px; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.granted-access { margin: 24px 0; }
+.granted-devices { padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 10px; }
+.granted-devices li { min-width: 0; max-width: 100%; }
+.granted-devices button { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
 button { font: inherit; font-size: 14px; font-weight: 600; border: 0; border-radius: 10px; background: var(--blue); color: white; padding: 12px 18px; min-height: 44px; cursor: pointer; transition: background-color .15s ease-out; }
 button:hover:not(:disabled) { background: var(--blue-hover); }
 button.secondary { color: var(--text); background: var(--soft); }

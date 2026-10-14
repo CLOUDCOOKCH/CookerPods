@@ -105,7 +105,7 @@ test('missing services are separate from chooser cancellation in exported errors
   const result = p.report().checks.find(c => c.check === 'battery');
   assert.equal(result.outcome, 'not-read');
   assert.match(result.error.explanation, /service-read result/);
-  assert.equal(p.report().probeVersion, '0.2.0');
+  assert.equal(p.report().probeVersion, '0.3.0');
   p.disconnect();
 });
 test('canceled pending selection cannot overwrite a newer session', async () => {
@@ -209,5 +209,72 @@ test('zero broadcast events remain inconclusive and the watcher is stopped', asy
   assert.equal(p.busy, false);
   assert.equal(p.state.checks.at(-1).outcome, 'inconclusive');
   assert.equal(p.watcher, null);
+  p.disconnect();
+});
+test('previous website grants reconnect without discovery or new permissions', async () => {
+  const d = device(); let chooserCalls = 0;
+  const p = new Probe({ navigator: { bluetooth: {
+    requestDevice: async () => { chooserCalls++; throw new Error('Chooser must not run'); },
+    getDevices: async () => [d]
+  } } });
+  await p.loadGrantedDevices();
+  assert.equal(p.grantedDevices.length, 1);
+  assert.equal(d.gatt.connected, false); // Listing alone must not connect.
+  assert.equal(p.state.selected, false);
+  assert.doesNotMatch(JSON.stringify(p.report()), /private device name|private-browser-id/);
+  await p.reconnectGranted(0);
+  assert.equal(chooserCalls, 0);
+  assert.equal(p.state.connected, true);
+  assert.equal(p.state.battery, 74);
+  assert.equal(p.state.broadcastPermission, false);
+  assert.match(p.state.checks.find(c => c.check === 'selection').detail, /previously allowed/);
+  p.disconnect();
+});
+test('empty browser grants do not become an empty Windows device inventory', async () => {
+  const p = new Probe({ navigator: { bluetooth: { getDevices: async () => [] } } });
+  await p.loadGrantedDevices();
+  assert.equal(p.grantedDevices.length, 0);
+  assert.equal(p.state.checks.at(-1).outcome, 'empty');
+  assert.match(p.grantedStatus, /Windows-connected device can still be absent/);
+  assert.equal(p.state.selected, false);
+});
+test('unsupported grant enumeration is explicitly unavailable', async () => {
+  const p = new Probe({ navigator: { bluetooth: {} } });
+  await p.loadGrantedDevices();
+  assert.equal(p.state.checks.at(-1).outcome, 'unavailable');
+  assert.match(p.grantedStatus, /cannot list all Windows-paired devices/);
+});
+test('grant enumeration errors preserve privacy and do not expose a stale list', async () => {
+  const p = new Probe({ navigator: { bluetooth: { getDevices: async () => { throw namedError('SecurityError'); } } } });
+  p.grantedDevices = [device()]; p.grantedNames = ['private device name'];
+  await p.loadGrantedDevices();
+  assert.equal(p.grantedDevices.length, 0);
+  assert.equal(p.grantedNames.length, 0);
+  assert.equal(p.state.checks.at(-1).outcome, 'failed');
+  assert.equal(p.busy, false);
+  assert.doesNotMatch(JSON.stringify(p.report()), /private device|AA:BB/);
+});
+test('canceling grant enumeration ignores late results', async () => {
+  let resolve;
+  const p = new Probe({ navigator: { bluetooth: { getDevices: () => new Promise(r => { resolve = r; }) } } });
+  const pending = p.loadGrantedDevices();
+  p.disconnect(); resolve([device()]); await pending;
+  assert.equal(p.grantedDevices.length, 0);
+  assert.equal(p.busy, false);
+  assert.match(p.grantedStatus, /lookup stopped/);
+});
+test('failed previously allowed GATT device never triggers a fallback chooser', async () => {
+  let chooserCalls = 0;
+  const p = new Probe({ navigator: { bluetooth: {
+    getDevices: async () => [device({ failConnect: true })],
+    requestDevice: async () => { chooserCalls++; }
+  } } });
+  await p.loadGrantedDevices(); await p.reconnectGranted(0);
+  assert.equal(chooserCalls, 0);
+  assert.equal(p.state.connected, false);
+  assert.equal(p.state.checks.at(-1).check, 'gatt');
+  assert.equal(p.state.checks.at(-1).error.name, 'NetworkError');
+  await p.reconnectGranted(-1); await p.reconnectGranted(99);
+  assert.equal(chooserCalls, 0);
   p.disconnect();
 });

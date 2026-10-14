@@ -54,6 +54,10 @@
       this.busy = false;
       this.watcher = null;
       this.gattDisconnectListener = null;
+      this.grantedDevices = [];
+      this.grantedNames = [];
+      this.grantsPending = false;
+      this.grantedStatus = 'Only devices previously allowed on this website can appear here. Windows pairing alone does not grant website access.';
       this.state = { status: 'Ready to check the standard battery and device-information services.', phase: 'idle', selected: false, connected: false, name: '', battery: null, model: null, firmware: null, observedAt: null, broadcastPermission: false, broadcasts: 0, broadcastStatus: 'Not checked', checks: [], capabilities: { secure, bluetooth: secure && typeof this.nav.bluetooth?.requestDevice === 'function', serial: secure && typeof this.nav.serial?.requestPort === 'function', broadcasts: false } };
     }
     update(values = {}) { Object.assign(this.state, values); this.dispatchEvent(new Event('change')); }
@@ -62,8 +66,44 @@
       this.state.checks = this.state.checks.slice(-50);
       this.update();
     }
-    async connect(includeBroadcasts = false) {
+    async loadGrantedDevices() {
       if (this.busy) return;
+      if (!this.secure || typeof this.nav.bluetooth?.getDevices !== 'function') {
+        this.grantedStatus = 'Listing previous website grants is unavailable in this browser. This page cannot list all Windows-paired devices.';
+        this.record('grants', 'unavailable', this.grantedStatus);
+        return;
+      }
+      const epoch = this.epoch;
+      this.busy = true;
+      this.grantsPending = true;
+      this.grantedStatus = 'Checking this website’s existing device grants…';
+      this.update();
+      try {
+        const devices = await deadline(this.nav.bluetooth.getDevices(), this.timeoutMs);
+        if (epoch !== this.epoch) return;
+        this.grantedDevices = devices;
+        this.grantedNames = devices.map(d => d.name || 'Unnamed previously allowed device');
+        this.grantedStatus = devices.length
+          ? `${devices.length} previously allowed device(s). Choose one below to check it without reopening the discovery chooser. Existing service grants are reused; no new permissions are added.`
+          : 'No devices have been allowed for this website in this browser profile. A Windows-connected device can still be absent here. First-time website access requires the browser chooser.';
+        this.record('grants', devices.length ? 'available' : 'empty', `${devices.length} devices returned from existing website grants. This is not the Windows paired-device list.`);
+      } catch (error) {
+        if (epoch !== this.epoch) return;
+        this.grantedDevices = [];
+        this.grantedNames = [];
+        this.grantedStatus = 'Previous website grants could not be listed. No Windows device inventory was checked.';
+        this.record('grants', 'failed', this.grantedStatus, error);
+      } finally {
+        if (epoch === this.epoch) { this.grantsPending = false; this.busy = false; this.update(); }
+      }
+    }
+    async reconnectGranted(index) {
+      if (!Number.isInteger(index) || index < 0 || !this.grantedDevices[index]) return;
+      return this.connect(false, this.grantedDevices[index]);
+    }
+    async connect(includeBroadcasts = false, grantedDevice = null) {
+      if (this.busy) return;
+      if (grantedDevice) includeBroadcasts = false;
       if (!this.state.capabilities.bluetooth) {
         this.record('browser', 'unavailable', 'Web Bluetooth requires a secure context and browser support.');
         this.update({ status: 'Web Bluetooth is unavailable in this context. Use an HTTPS page in current Edge.' });
@@ -72,12 +112,12 @@
       this.disconnect(false);
       const epoch = ++this.epoch;
       this.busy = true;
-      this.update({ phase: 'selecting', status: 'Select your AirPods in the browser chooser. Device selection is not proof of management support.' });
+      this.update({ phase: 'selecting', status: grantedDevice ? 'Reusing a device already allowed for this website. Windows audio status is not verified.' : 'Select your AirPods in the browser chooser. Device selection is not proof of management support.' });
       let operation = 'selection';
       try {
         const options = { acceptAllDevices: true, optionalServices: [...SERVICES] };
         if (includeBroadcasts) options.optionalManufacturerData = [0x004c];
-        const device = await this.nav.bluetooth.requestDevice(options);
+        const device = grantedDevice || await this.nav.bluetooth.requestDevice(options);
         if (epoch !== this.epoch) return;
         operation = 'gatt';
         this.device = device;
@@ -88,7 +128,7 @@
         device.addEventListener('gattserverdisconnected', this.gattDisconnectListener);
         this.state.capabilities.broadcasts = typeof device.watchAdvertisements === 'function';
         this.update({ selected: true, name: device.name || 'Unnamed selected device', broadcastPermission: includeBroadcasts, phase: 'connecting', status: 'Device selected. Checking the GATT connection…' });
-        this.record('selection', 'selected', 'A browser device was selected. Model and active Windows audio device are not verified.');
+        this.record('selection', 'selected', grantedDevice ? 'A previously allowed device was reused without the discovery chooser or new permission requests. Model and Windows audio status are not verified.' : 'A browser device was selected. Model and active Windows audio device are not verified.');
         if (!device.gatt) {
           this.record('gatt', 'unavailable', 'The selected browser device has no accessible GATT server.');
           this.update({ phase: 'complete', status: 'Selection worked, but no GATT server is accessible.' });
@@ -149,6 +189,8 @@
     }
     disconnect(record = true) {
       ++this.epoch;
+      if (this.grantsPending) this.grantedStatus = 'Previous-device lookup stopped. Find previously allowed devices to try again.';
+      this.grantsPending = false;
       this.watcher?.abort();
       this.watcher = null;
       const device = this.device;
@@ -221,7 +263,7 @@
     }
     report() {
       return {
-        schemaVersion: 1, probeVersion: '0.2.0', exportedAt: new Date().toISOString(),
+        schemaVersion: 1, probeVersion: '0.3.0', exportedAt: new Date().toISOString(),
         scope: 'Read-only browser feasibility. No AirPods control transport or exact model identity is established.',
         capabilities: { ...this.state.capabilities },
         session: { phase: this.state.phase, selected: this.state.selected, gattConnected: this.state.connected },

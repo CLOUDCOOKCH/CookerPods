@@ -22,12 +22,17 @@
 
     <section class="workspace" aria-labelledby="connection-title">
       <div class="section-heading"><h2 id="connection-title">Check your AirPods</h2><span id="session-label" class="badge">No device selected</span></div>
-      <p>Use current Microsoft Edge on Windows 11. Pair your AirPods in Windows Settings first, then keep them nearby. Open the case if they do not appear.</p>
+      <p>Use current Microsoft Edge on Windows 11. Windows audio pairing and website access are separate. Connected AirPods may not appear in the browser’s discovery chooser. This page cannot list every device paired in Windows.</p>
       <ul class="environment" aria-label="Browser capabilities">
         <li><span>Secure context</span><strong id="secure-support">Checking…</strong></li>
         <li><span>Web Bluetooth</span><strong id="bluetooth-support">Checking…</strong></li>
         <li><span>Web Serial</span><strong id="serial-support">Checking…</strong></li>
       </ul>
+      <div class="granted-access">
+        <button id="find-granted" class="secondary" type="button">Find previously allowed devices</button>
+        <p id="granted-status" class="hint" role="status" aria-live="polite">Only devices previously allowed on this website can appear here. Windows pairing alone does not grant website access.</p>
+        <ul id="granted-devices" class="granted-devices" aria-label="Previously allowed devices"></ul>
+      </div>
       <label class="choice"><input id="broadcast-permission" type="checkbox"><span>Also request access to Apple broadcast data<span class="hint">Optional. Edge may not support receiving it. Payloads are never exported.</span></span></label>
       <div class="actions"><button id="connect" type="button">Select device and check</button><button id="disconnect" class="secondary" type="button" disabled>Disconnect / cancel</button></div>
       <p id="status" role="status" aria-live="polite">Ready to check the standard battery and device-information services.</p>
@@ -58,7 +63,7 @@
         <p class="hint">No matching port does not prove that every possible vendor service is absent. We do not guess service UUIDs.</p>
       </details>
       <details><summary>How to interpret this check</summary>
-        <p>Appearing in a chooser proves selection only. A GATT connection proves access to that connection, not access to AirPods control. This page requests only the standard Battery and Device Information services.</p>
+        <p>Appearing in a chooser proves selection only. A GATT connection proves access to that connection, not access to AirPods control. This page requests only the standard Battery and Device Information services. Reusing a previous website grant avoids the discovery chooser but cannot add services or make an unsupported GATT connection work.</p>
         <p>Missing or denied standard services do not prove the device has no private services. Noise control uses a different protocol in the inspected references; this page does not claim it can reach that protocol.</p>
         <p>Closing or refreshing the page loses the results. Disconnecting stops this page's connection; it does not revoke the browser's saved device grant. You can remove that grant in Edge's site permissions.</p>
       </details>

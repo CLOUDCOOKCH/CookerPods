@@ -8,6 +8,7 @@ Visitors install no companion, extension, PWA, or driver. There is no applicatio
 
 1. Publish the static page over HTTPS. The included workflow tests and deploys it to GitHub Pages when `main` is updated; see [hosting](docs/hosting.md) for setup and deployment verification.
 2. Open the HTTPS page in current Edge on Windows 11. Pair your AirPods through ordinary Windows Settings, then select them using **Select device and check**. If they are not offered, record that outcome; don't change browser flags.
+   If you have already selected them on this website, use **Find previously allowed devices**, then choose the device to reuse its browser grant without rediscovery. This lists only devices allowed for this origin/browser profile, not all Windows-connected devices. Reuse adds no service or broadcast permissions; use the chooser to request new permissions. Previously selected devices may be available even when no longer advertising, but actual GATT access can still fail.
 3. Optionally request Apple broadcast-data access when selecting. **Check broadcasts** is available only if the selected-device API exists; observation ends automatically after 20 seconds. No nearby-device scan is started.
 4. Download and inspect the report. Record the Edge version, Windows build, Intel adapter/driver, AirPods model/variant, and firmware separately where known. No device data is uploaded automatically.
 

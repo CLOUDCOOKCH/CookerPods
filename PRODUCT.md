@@ -16,12 +16,13 @@ CookerPods currently provides a read-only transport feasibility diagnostic. Its 
 
 ## Operating Context
 
-Visitors open an HTTPS static page, pair their AirPods in ordinary Windows Settings, and explicitly select a device in a browser chooser. Results remain in the tab until refresh or closure. Downloaded JSON reports are local and can be inspected before sharing. A GitHub Pages workflow tests and deploys updates to `main`; successful publication still requires a completed deployment and site verification.
+Visitors open an HTTPS static page and explicitly select a device in a browser chooser or reuse a device previously allowed for this website in the current browser profile. Windows audio pairing and website access are separate: connected AirPods may be absent from the chooser, and Windows pairing alone does not grant website access. Results remain in the tab until refresh or closure. Downloaded JSON reports are local and can be inspected before sharing. A GitHub Pages workflow tests and deploys updates to `main`; successful publication still requires a completed deployment and site verification.
 
 ## Capabilities and Constraints
 
 - No companion application, extension, custom driver, PWA installation, or experimental browser flags. These are binding constraints, including if browser transport proves insufficient.
 - The diagnostic requests standard Battery and Device Information services and may read one unassigned battery sample, model, and firmware. It sends no settings commands. Selection and GATT connection do not establish AirPods identity, active Windows audio status, or management support.
+- **Find previously allowed devices** uses `navigator.bluetooth.getDevices()` where available to list this origin's existing grants in the current browser profile. A per-device **Check** reuses that grant without reopening the chooser or adding service/manufacturer permissions. This does not list Windows-paired devices, guarantee a GATT connection, or establish AirPods support. First-time website access still requires the browser chooser.
 - Optional Apple manufacturer-data permission permits a 20-second observation of the selected device where supported. No general scan, raw-data export, decryption, or battery decoding is implemented. API presence and zero received events are inconclusive.
 - The optional Web Serial chooser only inspects a selected port; it never opens or writes to it. An AirPods equivalent to ear-web's Nothing serial transport has not been established.
 - Reports exclude device names, addresses, browser IDs, raw broadcasts, and raw exception messages. Model and firmware strings may be included. There is no backend, analytics, or automatic upload.

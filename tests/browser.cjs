@@ -23,11 +23,12 @@ async function main() {
     await fs.mkdir(screenshots, { recursive: true });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, acceptDownloads: true });
     await context.addInitScript(() => {
-      window.mock = { mode: 'success', serialOpened: 0, requested: null };
+      window.mock = { mode: 'success', serialOpened: 0, requested: null, granted: [], chooserCalls: 0 };
       const error = name => Object.assign(new Error('private device address'), { name });
       const data = value => new DataView(Uint8Array.from(value).buffer);
       Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: { requestDevice: async options => {
         mock.requested = options;
+        mock.chooserCalls++;
         if (mock.mode === 'denied') throw error('NotAllowedError');
         const d = new EventTarget();
         d.name = '<img src=x onerror=alert(1)> private name';
@@ -44,8 +45,9 @@ async function main() {
           e.manufacturerData = new Map([[0x004c, data([1, 2, 3])]]);
           if (!signal.aborted) d.dispatchEvent(e);
         };
+        mock.granted = [d];
         return d;
-      } } });
+      }, getDevices: async () => mock.granted } });
       Object.defineProperty(navigator, 'serial', { configurable: true, value: { requestPort: async () => ({ getInfo: () => ({ bluetoothServiceClassId: 'private-uuid' }), open: async () => { mock.serialOpened++; } }) } });
     });
     const page = await context.newPage();
@@ -54,6 +56,9 @@ async function main() {
     await page.goto(address);
     await page.screenshot({ path: path.join(screenshots, 'desktop.png'), fullPage: true });
     assert.equal(await page.locator('#bluetooth-support').textContent(), 'API present · device unverified');
+    await page.getByRole('button', { name: 'Find previously allowed devices' }).click();
+    await page.waitForFunction(() => document.getElementById('granted-status').textContent.includes('No devices have been allowed'));
+    assert.equal(await page.locator('#granted-devices button').count(), 0);
     await page.getByRole('button', { name: 'Select device and check' }).click();
     await page.waitForFunction(() => document.getElementById('battery').textContent.startsWith('82%'));
     assert.match(await page.locator('#device-name').textContent(), /<img/);
@@ -67,6 +72,14 @@ async function main() {
     assert.doesNotMatch(report, /private name|private-id|private device address/);
     await page.getByRole('button', { name: 'Disconnect / cancel' }).click();
     assert.match(await page.locator('#status').textContent(), /past observations/);
+    await page.getByRole('button', { name: 'Find previously allowed devices' }).click();
+    await page.locator('#granted-devices button').waitFor();
+    assert.equal(await page.locator('#granted-devices img').count(), 0);
+    const chooserCalls = await page.evaluate(() => mock.chooserCalls);
+    await page.locator('#granted-devices button').click();
+    await page.waitForFunction(() => document.getElementById('status').textContent.includes('component and reliability'));
+    assert.equal(await page.evaluate(() => mock.chooserCalls), chooserCalls);
+    assert.match(await page.locator('#events').textContent(), /previously allowed device was reused/);
     await page.evaluate(() => { mock.mode = 'absent'; });
     await page.getByRole('button', { name: 'Select again and recheck' }).click();
     await page.waitForFunction(() => document.getElementById('status').textContent.includes('Private AirPods services remain untested'));
@@ -102,10 +115,11 @@ async function main() {
     const noApi = await unsupported.newPage(); await noApi.goto(address);
     assert.equal(await noApi.locator('#connect').isDisabled(), true);
     assert.equal(await noApi.locator('#serial').isDisabled(), true);
+    assert.equal(await noApi.locator('#find-granted').isDisabled(), true);
     assert.equal(await noApi.locator('#context-help').isVisible(), true);
     assert.deepEqual(errors, []);
     await unsupported.close(); await context.close();
-    console.log('Browser integration passed: read, XSS-safe display, export privacy, disconnect, missing services, denied chooser, serial no-open, broadcast opt-in, missing APIs, mobile layout, dark/reduced-motion render. Hardware APIs were mocked.');
+    console.log('Browser integration passed: read, XSS-safe display, export privacy, disconnect, empty grants, reconnect without chooser, missing services, denied chooser, serial no-open, broadcast opt-in, missing APIs, mobile layout, dark/reduced-motion render. Hardware APIs were mocked.');
     console.log(`Screenshots: ${screenshots}`);
   } finally {
     await browser?.close();

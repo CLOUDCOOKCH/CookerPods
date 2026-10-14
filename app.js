@@ -1,6 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const probe = new CookerPodsProbe.Probe({ navigator, secure: window.isSecureContext });
+let renderedGrants = '';
 function render() {
   const s = probe.state;
   $('secure-support').textContent = s.capabilities.secure ? 'Available' : 'HTTPS required';
@@ -12,6 +13,24 @@ function render() {
   $('disconnect').disabled = !probe.busy && !probe.device;
   $('broadcast-permission').disabled = probe.busy;
   $('serial').disabled = probe.busy || !s.capabilities.serial;
+  $('find-granted').disabled = probe.busy || !s.capabilities.secure || typeof navigator.bluetooth?.getDevices !== 'function';
+  $('granted-status').textContent = typeof navigator.bluetooth?.getDevices !== 'function'
+    ? 'Listing previous website grants is unavailable in this browser. The site cannot list all Windows-paired devices.'
+    : probe.grantedStatus;
+  const grants = $('granted-devices');
+  const signature = JSON.stringify(probe.grantedNames);
+  if (renderedGrants !== signature) {
+    renderedGrants = signature;
+    grants.replaceChildren();
+    probe.grantedNames.forEach((name, index) => {
+      const li = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'secondary'; button.textContent = `Check ${name}`;
+      button.addEventListener('click', () => probe.reconnectGranted(index));
+      li.append(button); grants.append(li);
+    });
+  }
+  for (const button of grants.querySelectorAll('button')) button.disabled = probe.busy;
   $('status').textContent = s.status;
   $('session-label').textContent = s.connected ? 'GATT connected' : s.selected ? 'Selected · no GATT connection' : 'No device selected';
   $('device-panel').hidden = !s.selected;
@@ -36,6 +55,7 @@ $('connect').addEventListener('click', () => probe.connect($('broadcast-permissi
 $('disconnect').addEventListener('click', () => probe.disconnect());
 $('broadcast').addEventListener('click', () => probe.broadcasts());
 $('serial').addEventListener('click', () => probe.serial());
+$('find-granted').addEventListener('click', () => probe.loadGrantedDevices());
 $('export').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(probe.report(), null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
