@@ -12,7 +12,7 @@ The intended user wants to manage AirPods directly in a browser, with an experie
 
 ## Product Purpose
 
-CookerPods currently provides a read-only transport feasibility diagnostic. Its immediate purpose is to establish what the browser can actually access before building a manager. A usable browser-only AirPods manager remains the future goal; the current page does not fulfill that goal or establish hardware support.
+CookerPods currently provides read-only transport feasibility diagnostics. The website tests browser access; after repeated browser GATT failures the user explicitly authorized trying native installation. A self-contained Windows diagnostic now tests ordinary Windows device/advertisement APIs. A functional AirPods manager remains the goal; neither diagnostic establishes a verified control transport.
 
 ## Operating Context
 
@@ -20,7 +20,8 @@ Visitors open an HTTPS static page and explicitly select a device in a browser c
 
 ## Capabilities and Constraints
 
-- No companion application, extension, custom driver, PWA installation, or experimental browser flags. These are binding constraints, including if browser transport proves insufficient.
+- The website remains installation-free. The user has now explicitly allowed a separate native Windows preview after browser-only access failed. Standard Windows drivers and ordinary user privileges remain the baseline; no extension, custom driver, mandatory PWA, or experimental browser flags are introduced.
+- The native preview has no browser bridge, listening endpoint, settings writes, or cloud backend. Paired-device status and nearby broadcast candidates are separate. Experimental battery estimates are unassociated and do not establish physical left/right mapping. See `docs/native-windows.md` for the hardware gate.
 - The diagnostic requests standard Battery and Device Information services and may read one unassigned battery sample, model, and firmware. It sends no settings commands. Selection and GATT connection do not establish AirPods identity, active Windows audio status, or management support.
 - **Find previously allowed devices** uses `navigator.bluetooth.getDevices()` where available to list this origin's existing grants in the current browser profile. A per-device **Check** reuses that grant without reopening the chooser or adding service/manufacturer permissions. This does not list Windows-paired devices, guarantee a GATT connection, or establish AirPods support. First-time website access still requires the browser chooser.
 - Optional Apple manufacturer-data permission permits a 20-second observation of the selected device where supported. No general scan, raw-data export, decryption, or battery decoding is implemented. API presence and zero received events are inconclusive.

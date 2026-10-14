@@ -1,0 +1,65 @@
+name: Build Windows diagnostic preview
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native/**'
+      - 'scripts/**'
+      - 'global.json'
+      - 'docs/native-windows.md'
+      - '.github/workflows/native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-package:
+    runs-on: windows-latest
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up pinned .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+      - name: Test native parser and report behavior
+        shell: pwsh
+        run: |
+          dotnet restore native/CookerPods.Diagnostic.Tests --locked-mode
+          if ($LASTEXITCODE -ne 0) { throw 'Locked restore failed' }
+          dotnet test native/CookerPods.Diagnostic.Tests -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Native tests failed' }
+      - name: Package x64 and ARM64 previews
+        run: python scripts/package-native.py
+      - name: Smoke-test packaged x64 startup without hardware
+        shell: pwsh
+        run: |
+          & artifacts/native/win-x64/CookerPods-Diagnostic.exe --help
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged x64 startup failed' }
+      - name: Verify PE architectures
+        shell: python
+        run: |
+          from pathlib import Path
+          import struct
+          for rid, expected in [('win-x64', 0x8664), ('win-arm64', 0xaa64)]:
+              data = Path('artifacts/native', rid, 'CookerPods-Diagnostic.exe').read_bytes()
+              offset = struct.unpack_from('<I', data, 0x3c)[0]
+              assert data[offset:offset+4] == b'PE\0\0'
+              assert struct.unpack_from('<H', data, offset + 4)[0] == expected
+              print(rid + ' PE architecture verified')
+      - name: Upload preview downloads
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: CookerPods-native-preview
+          path: |
+            artifacts/native/*.zip
+            artifacts/native/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

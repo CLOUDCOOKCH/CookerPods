@@ -1,8 +1,14 @@
-# CookerPods: browser connection lab
+# CookerPods connection lab
 
-A read-only feasibility probe for **browser-only AirPods access**. This is the first engineering experiment, not a working AirPods manager or a simulated device dashboard.
+Read-only feasibility diagnostics for AirPods access on Windows. The original website tests browser APIs. After the browser connection failures, an optional native Windows preview now tests standard Windows device and advertisement APIs. Neither diagnostic is a working AirPods manager or a simulated device dashboard.
 
-Visitors install no companion, extension, PWA, or driver. There is no application backend, external script, analytics, or automatic upload. The static page requests native browser permissions only after an explicit action.
+## Native Windows preview
+
+See [download/run instructions and limitations](docs/native-windows.md). The self-contained x64/ARM64 preview needs no separately installed .NET runtime, driver replacement, or administrator request. It has no browser bridge or network API yet. It records paired-device status separately from unassociated nearby broadcasts, with deliberately experimental coarse battery estimates. Reports stay local and exclude names, addresses, IDs, and raw payloads. The Windows build workflow produces ZIPs and checksums and smoke-tests x64 startup; physical AirPods validation remains required.
+
+## Browser-only website
+
+Website visitors install no companion, extension, PWA, or driver. There is no application backend, external script, analytics, or automatic upload. The static page requests native browser permissions only after an explicit action. The native preview is a separate, explicitly installed experiment, not a hidden dependency of the website.
 
 ## Use on Windows
 
