@@ -10,6 +10,11 @@ on:
       - 'docs/native-windows.md'
       - '.github/workflows/native.yml'
   workflow_dispatch:
+    inputs:
+      publish_preview:
+        description: Publish the tested packages as the 0.4.0 native prerelease
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -63,3 +68,36 @@ jobs:
             artifacts/native/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
+
+  publish-preview:
+    needs: build-and-package
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_preview
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: native-preview-publication
+      cancel-in-progress: false
+    steps:
+      - name: Check out release notes
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Download this run's tested packages
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: CookerPods-native-preview
+          path: bundles
+      - name: Verify checksums
+        working-directory: bundles
+        run: sha256sum --check SHA256SUMS.txt
+      - name: Publish explicit prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: >-
+          gh release create v0.4.0-native-preview
+          --target "$GITHUB_SHA" --prerelease
+          --title "Windows diagnostic 0.4.0 — native preview"
+          --notes-file native/RELEASE_NOTES.md
+          bundles/*.zip bundles/SHA256SUMS.txt
