@@ -43,7 +43,7 @@ jobs:
       - name: Verify driver architecture and provenance
         shell: python
         run: |
-          import hashlib, json, os, struct
+          import hashlib, json, os, shutil, struct
           from pathlib import Path
           root = Path('artifacts/driver')
           for arch, expected in [('ARM64', 0xaa64), ('x64', 0x8664)]:
@@ -54,7 +54,12 @@ jobs:
               assert data[offset:offset+4] == b'PE\0\0'
               assert struct.unpack_from('<H', data, offset+4)[0] == expected
               print(arch, hashlib.sha256(data).hexdigest())
-          (root / 'BUILDINFO.json').write_text(json.dumps({'sourceCommit': os.environ['GITHUB_SHA'], 'signature': 'unsigned development artifacts', 'hardwareValidated': False, 'installableRelease': False}, indent=2))
+          shutil.copyfile('native/CookerPods.Control.Driver/README.md', root / 'README.md')
+          shutil.copyfile('LICENSE', root / 'LICENSE-CookerPods.txt')
+          (root / 'BUILDINFO.json').write_text(json.dumps({'sourceCommit': os.environ['GITHUB_SHA'], 'wdkSdkVersion': '10.0.26100.6584', 'staticAnalysisEnabled': True, 'signature': 'unsigned development artifacts', 'hardwareValidated': False, 'installableRelease': False}, indent=2))
+          shipped = sorted(p for p in root.rglob('*') if p.is_file() and p.suffix.lower() in ('.sys', '.inf'))
+          shipped += [root / name for name in ('BUILDINFO.json', 'README.md', 'LICENSE-CookerPods.txt')]
+          (root / 'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.relative_to(root).as_posix() + '\n' for p in shipped), encoding='ascii')
       - name: Upload development artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -63,4 +68,7 @@ jobs:
             artifacts/driver/**/*.sys
             artifacts/driver/**/*.inf
             artifacts/driver/BUILDINFO.json
+            artifacts/driver/README.md
+            artifacts/driver/LICENSE-CookerPods.txt
+            artifacts/driver/SHA256SUMS.txt
           if-no-files-found: error
