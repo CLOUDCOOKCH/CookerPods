@@ -22,12 +22,12 @@ internal static class MonitorUiSmoke
         public void Start() => Epoch = session.BeginScan();
         public void Pause() => session.Pause();
         public void Dispose() => Pause();
-        public void Emit()
+        public void Emit(ulong address = 123, byte buds = 0xa9)
         {
             byte[] data = new byte[27];
             data[0] = 7; data[1] = 25; data[2] = 1; data[3] = 0x24; data[4] = 0x20;
-            data[6] = 0xa9; data[7] = 0x0f; data[10] = 0x80;
-            session.Observe(Epoch, 123, data);
+            data[6] = buds; data[7] = 0x0f; data[10] = 0x80;
+            session.Observe(Epoch, address, data);
         }
     }
 
@@ -41,7 +41,7 @@ internal static class MonitorUiSmoke
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             foreach (var (scene, theme, width, scale) in new[]
             {
-                ("empty", "light", 700d, 1d), ("live", "dark", 700d, 1d),
+                ("empty", "light", 700d, 1d), ("picker", "light", 700d, 1d), ("live", "dark", 700d, 1d),
                 ("stale", "light", 700d, 1d), ("narrow", "dark", 480d, 2d)
             })
             {
@@ -55,6 +55,14 @@ internal static class MonitorUiSmoke
                 if (scene == "empty")
                 {
                     Require(!window.ChooseButton.IsEnabled && !window.ReadingsVisible, "Empty state must not invent readings or a selection.");
+                }
+                else if (scene == "picker")
+                {
+                    radio.Emit(); radio.Emit(456, 0x77); window.RefreshNow(); Settle(window);
+                    Require(!window.ChooseButton.IsEnabled && !window.ReadingsVisible, "Two candidates must require a deliberate row choice.");
+                    window.Candidates.SelectedIndex = 0;
+                    Require(window.ChooseButton.IsEnabled && session.Snapshot().SelectedCandidateLabel is null,
+                        "Highlighting a candidate must enable the action without starting monitoring.");
                 }
                 else
                 {

@@ -20,7 +20,7 @@ if os.environ.get('GITHUB_STEP_SUMMARY'):
         file.write('## Windows UI smoke (synthetic fixtures)\n\n```json\n' + summary + '\n```\n')
 print(summary)
 assert result.returncode == 0 and report.get('success'), result.stderr
-assert len(report['captures']) == 4
+assert len(report['captures']) == 5
 for capture in report['captures']:
     data = (output / capture['filename']).read_bytes()
     assert data[:8] == b'\x89PNG\r\n\x1a\n' and len(data) > 5000

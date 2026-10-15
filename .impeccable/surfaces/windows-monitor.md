@@ -17,4 +17,4 @@ FORM: Scoped native extension of the existing single-column diagnostic workspace
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
-Required evidence: actual WPF captures from Windows CI, labeled synthetic, covering empty/light, live/dark, stale/light and narrow/200-percent layouts. Linux cannot execute the Windows UI. No HTML/CSS detector applies to native WPF. Preserve incumbent DESIGN.md and its token sidecar; document this extension in this brief.
+Required evidence: actual WPF captures from Windows CI, labeled synthetic, covering empty/light, populated picker/light, live/dark, stale/light and narrow/200-percent layouts. Linux cannot execute the Windows UI. No HTML/CSS detector applies to native WPF. Preserve incumbent DESIGN.md and its token sidecar; document this extension in this brief.

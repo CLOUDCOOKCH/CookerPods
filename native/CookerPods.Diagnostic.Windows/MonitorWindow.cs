@@ -37,6 +37,7 @@ internal sealed class MonitorWindow : Window
     internal string StateLabel => stateText.Text;
     internal bool ReadingsVisible => readings.Visibility == Visibility.Visible;
     internal Button ChooseButton => choose;
+    internal ListBox Candidates => candidateList;
     internal Button PauseButton => pause;
     internal Button ChangeButton => change;
     internal string[] ReadingLabels => battery.Select(b => b.Value.Text).ToArray();

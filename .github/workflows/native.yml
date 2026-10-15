@@ -106,7 +106,7 @@ jobs:
           assert os.environ['GITHUB_SHA'].startswith(tag.rsplit('-', 1)[1])
           report = json.loads(Path('ui-review/ui-smoke-result.json').read_text())
           assert report['success'] and report['sourceCommit'] == os.environ['GITHUB_SHA']
-          assert len(report['captures']) == 4 and all(c['synthetic'] for c in report['captures'])
+          assert len(report['captures']) == 5 and all(c['synthetic'] for c in report['captures'])
           assets = [str(Path('ui-review', c['filename'])) for c in report['captures']]
           subprocess.run(['gh', 'release', 'create', tag, '--target', os.environ['GITHUB_SHA'], '--prerelease',
               '--title', 'Monitor UI review artifacts (synthetic)', '--notes',
