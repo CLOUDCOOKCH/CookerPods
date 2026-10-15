@@ -31,7 +31,7 @@ jobs:
           foreach ($arch in @('ARM64', 'x64')) {
             if (-not $msbuild) { throw 'Visual Studio MSBuild was not found' }
             New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-            & $msbuild native/CookerPods.Control.Driver/CookerPodsControl.vcxproj /m:2 /p:Configuration=Release /p:Platform=$arch /verbosity:minimal 2>&1 | Tee-Object -FilePath "artifacts/driver-build-$arch.log"
+            & $msbuild native/CookerPods.Control.Driver/CookerPodsControl.vcxproj /m:2 /p:Configuration=Release /p:Platform=$arch /p:RunCodeAnalysis=true /verbosity:minimal 2>&1 | Tee-Object -FilePath "artifacts/driver-build-$arch.log"
             if ($LASTEXITCODE -ne 0) {
               Get-Content "artifacts/driver-build-$arch.log" -Tail 20 | ForEach-Object {
                 $line = ([string]$_).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')

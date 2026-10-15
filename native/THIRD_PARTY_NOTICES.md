@@ -8,4 +8,6 @@ The Windows API projection and WinRT support are supplied by Microsoft.Windows.S
 
 The academic/research references cited in README.md describe the wire format used to develop an original, deliberately limited decoder. Their source implementations and assets are not redistributed. No clean-room claim is made. Tests use independently authored synthetic frames.
 
+The app package contains no kernel driver. The separate original CookerPods control-driver source/development artifacts use documented Microsoft WDK/KMDF APIs; no NTPods/LibrePods implementation is incorporated. Microsoft driver API/sample architecture references are recorded in native/CookerPods.Control.Driver/README.md.
+
 This is an unsigned development preview with unverified physical AirPods compatibility. It contains no updater, telemetry uploader, network API, kernel driver, or administrator request.

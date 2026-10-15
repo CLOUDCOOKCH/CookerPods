@@ -125,12 +125,13 @@ static NTSTATUS CpConnect(CP_DEVICE* ctx)
     if (status == STATUS_TIMEOUT) return STATUS_IO_TIMEOUT;
     if (!NT_SUCCESS(status)) return status;
     if (info.address == 0) return STATUS_DEVICE_NOT_CONNECTED;
+    if ((info.flags & BDIF_PAIRED) == 0) return STATUS_ACCESS_DENIED;
     ctx->Address = info.address;
     brb = (struct _BRB_L2CA_OPEN_CHANNEL*)ctx->Profile.BthAllocateBrb(BRB_L2CA_OPEN_CHANNEL, CP_POOL_TAG);
     if (brb == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     brb->BtAddress = ctx->Address;
     brb->Psm = CP_AAP_PSM;
-    brb->ChannelFlags = CF_ROLE_EITHER;
+    brb->ChannelFlags = CF_ROLE_EITHER | CF_LINK_ENCRYPTED | CF_LINK_SUPPRESS_PIN;
     brb->ConfigOut.Flags = CFG_MTU;
     brb->ConfigOut.Mtu.Min = L2CAP_MIN_MTU;
     brb->ConfigOut.Mtu.Max = CP_MAX_PACKET;

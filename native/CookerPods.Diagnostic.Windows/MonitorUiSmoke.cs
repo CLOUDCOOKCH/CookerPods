@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -31,6 +32,22 @@ internal static class MonitorUiSmoke
         }
     }
 
+    private sealed class FixtureControlTransport : IAapTransport
+    {
+        private readonly Channel<ReadOnlyMemory<byte>> input = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+        public int Writes { get; private set; }
+        public ValueTask ConnectAsync(CancellationToken token)
+        {
+            Emit(0x0d, 2); Emit(0x0a, 1); Emit(0x28, 2);
+            input.Writer.TryWrite(new byte[] {4,0,4,0,4,0,2, 4,1,83,2,1, 2,1,84,2,1});
+            return ValueTask.CompletedTask;
+        }
+        public ValueTask SendAsync(ReadOnlyMemory<byte> packet, CancellationToken token) { Writes++; return ValueTask.CompletedTask; }
+        public ValueTask<ReadOnlyMemory<byte>> ReceiveAsync(CancellationToken token) => input.Reader.ReadAsync(token);
+        public void Emit(byte attribute, byte value) => input.Writer.TryWrite(new byte[] {4,0,4,0,9,0,attribute,value,0,0,0});
+        public ValueTask DisposeAsync() { input.Writer.TryComplete(); return ValueTask.CompletedTask; }
+    }
+
     internal static int Run(string directory)
     {
         Directory.CreateDirectory(directory);
@@ -42,17 +59,45 @@ internal static class MonitorUiSmoke
             foreach (var (scene, theme, width, scale) in new[]
             {
                 ("empty", "light", 700d, 1d), ("picker", "light", 700d, 1d), ("live", "dark", 700d, 1d),
-                ("stale", "light", 700d, 1d), ("narrow", "dark", 480d, 2d)
+                ("stale", "light", 700d, 1d), ("narrow", "dark", 480d, 2d),
+                ("controls", "dark", 700d, 1d), ("pending", "light", 700d, 1d), ("controls-narrow", "dark", 480d, 2d)
             })
             {
                 var clock = new Clock();
                 using var session = new LiveMonitorSession(clock);
                 using var radio = new FixtureRadio(session);
-                var window = new MonitorWindow(session, radio, testMode: true, themeOverride: theme)
+                bool controlScene = scene is "controls" or "pending" or "controls-narrow";
+                var controlTransport = new FixtureControlTransport();
+                var controls = controlScene ? new ControlPanel(() => [new("Synthetic paired control service", "synthetic-control-service")], _ => controlTransport) : new ControlPanel(() => []);
+                var window = new MonitorWindow(session, radio, testMode: true, themeOverride: theme, controls: controls)
                 { Width = width, Height = 690 };
                 window.Show();
                 Settle(window);
-                if (scene == "empty")
+                if (controlScene)
+                {
+                    window.ShowManagement();
+                    PumpUntil(window, () => controls.ConnectButton.IsEnabled);
+                    controls.ConnectButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    PumpUntil(window, () => controls.Snapshot?.Phase == ControlPhase.Ready);
+                    window.RefreshNow();
+                    Require(!controls.ModeButtons[NoiseMode.Adaptive].IsEnabled, "Unreported Adaptive support must stay unavailable.");
+                    controls.ModeButtons[NoiseMode.Transparency].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    PumpUntil(window, () => controls.Snapshot?.LastCommandOutcome == CommandOutcome.Pending);
+                    Require(controls.Snapshot?.ReportedNoiseMode == NoiseMode.NoiseCancellation, "Sending a mode must not optimistically change its reported state.");
+                    if (scene != "pending")
+                    {
+                        controlTransport.Emit(0x0d, 3);
+                        PumpUntil(window, () => controls.Snapshot?.LastCommandOutcome == CommandOutcome.DeviceReported);
+                        window.RefreshNow();
+                        controls.SettingButton(AapSetting.ConversationAwareness).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        PumpUntil(window, () => controls.Snapshot?.LastCommandOutcome == CommandOutcome.Pending);
+                        Require(controls.Snapshot?.ReportedConversationAwareness == false, "A setting request must not change reported state.");
+                        controlTransport.Emit(0x28, 1);
+                        PumpUntil(window, () => controls.Snapshot?.ReportedConversationAwareness == true);
+                    }
+                    window.RefreshNow();
+                }
+                else if (scene == "empty")
                 {
                     Require(!window.ChooseButton.IsEnabled && !window.ReadingsVisible, "Empty state must not invent readings or a selection.");
                 }
@@ -93,13 +138,19 @@ internal static class MonitorUiSmoke
                 metadata.SetQuery("/tEXt/{str=Description}", "CookerPods WPF UI test capture; synthetic fixture, not AirPods hardware evidence.");
                 encoder.Frames.Add(BitmapFrame.Create(bitmap, null, metadata, null));
                 using (var file = File.Create(Path.Combine(directory, filename))) encoder.Save(file);
-                results.Add(new { filename, theme, width, scale, synthetic = true, state = session.Snapshot().State.ToString() });
-                if (scene != "empty")
+                results.Add(new { filename, theme, width, scale, synthetic = true, state = controlScene ? controls.Snapshot?.LastCommandOutcome.ToString() : session.Snapshot().State.ToString() });
+                if (!controlScene && scene != "empty")
                 {
                     window.ChangeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     Require(!window.ReadingsVisible && session.Snapshot().SelectedCandidateLabel is null, "Change candidate did not clear the selection.");
                 }
+                if (scene == "pending")
+                {
+                    controlTransport.Emit(0x0d, 3);
+                    PumpUntil(window, () => controls.Snapshot?.LastCommandOutcome == CommandOutcome.DeviceReported);
+                }
                 window.Close();
+                PumpUntil(window, () => !window.IsVisible);
             }
             app.Shutdown();
             File.WriteAllText(Path.Combine(directory, "ui-smoke-result.json"), JsonSerializer.Serialize(new
@@ -118,6 +169,17 @@ internal static class MonitorUiSmoke
         }
     }
 
+    private static void PumpUntil(Window window, Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition())
+        {
+            Settle(window);
+            if (DateTime.UtcNow > deadline) throw new InvalidOperationException("Timed out waiting for a synthetic UI state.");
+            Thread.Sleep(10);
+        }
+        Settle(window);
+    }
     private static void Settle(Window window)
     {
         window.Dispatcher.Invoke(() => window.UpdateLayout(), DispatcherPriority.ApplicationIdle);

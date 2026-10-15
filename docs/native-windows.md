@@ -2,6 +2,8 @@
 
 The native preview now opens a Windows app window with continuously observed, experimental battery estimates. It uses standard Windows Bluetooth drivers and ordinary user privileges. Renamed AirPods are not filtered out: the monitor does not query friendly names or require an AirPods name. No browser helper, server, driver, or settings/control transport is included.
 
+The next source milestone is [driver-backed management development](control-development.md). It does not turn the public 0.5.0 download into a control-enabled release.
+
 ## Download and run
 
 1. [Download preview 0.5.0](https://github.com/CLOUDCOOKCH/CookerPods/releases/tag/v0.5.0-native-preview). Choose **win-arm64** for a Windows ARM PC, or **win-x64** for an Intel/AMD PC. Settings → System → About → System type identifies the architecture.

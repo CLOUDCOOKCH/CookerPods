@@ -18,10 +18,14 @@ internal sealed class MonitorWindow : Window
     private readonly IMonitorRadio radio;
     private readonly bool testMode;
     private readonly string? themeOverride;
+    private readonly ControlPanel controlPanel;
+    private Expander? management;
+    private bool closing, readyToClose;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly Dictionary<string, CandidateRow> rows = [];
     private readonly StackPanel picker = new(), readings = new();
     private readonly ListBox candidateList = new() { MinHeight = 100, MaxHeight = 190, BorderThickness = new Thickness(0) };
+    private readonly TextBlock titleText = Text("Battery monitor", 28, FontWeights.SemiBold);
     private readonly TextBlock empty = Text("Waiting for nearby broadcasts. Open the case, then take the earbuds out.", 15);
     private readonly TextBlock stateText = Text("Scanning for battery estimates", 16, FontWeights.SemiBold);
     private readonly TextBlock ageText = Text("", 13);
@@ -40,14 +44,16 @@ internal sealed class MonitorWindow : Window
     internal ListBox Candidates => candidateList;
     internal Button PauseButton => pause;
     internal Button ChangeButton => change;
+    internal void ShowManagement() { if (management is not null) management.IsExpanded = true; }
     internal string[] ReadingLabels => battery.Select(b => b.Value.Text).ToArray();
 
-    public MonitorWindow(LiveMonitorSession session, IMonitorRadio radio, bool testMode = false, string? themeOverride = null)
+    public MonitorWindow(LiveMonitorSession session, IMonitorRadio radio, bool testMode = false, string? themeOverride = null, ControlPanel? controls = null)
     {
         this.session = session;
         this.radio = radio;
         this.testMode = testMode;
         this.themeOverride = themeOverride;
+        controlPanel = controls ?? (testMode ? new ControlPanel(() => []) : new ControlPanel());
         Title = "CookerPods";
         Width = 700; Height = 650; MinWidth = 480; MinHeight = 460;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -87,6 +93,16 @@ internal sealed class MonitorWindow : Window
         save.Click += (_, _) => SaveReport();
         timer.Tick += (_, _) => RefreshNow();
         Loaded += (_, _) => { radio.Start(); RefreshNow(); if (!testMode) timer.Start(); };
+        Closing += async (_, args) =>
+        {
+            if (readyToClose) return;
+            args.Cancel = true;
+            if (closing) return;
+            closing = true; timer.Stop(); radio.Pause();
+            try { await controlPanel.DisposeAsync(); }
+            catch { /* Closing still releases the process-owned handle and stops observation. */ }
+            finally { readyToClose = true; Close(); }
+        };
         Closed += (_, _) =>
         {
             timer.Stop(); SystemEvents.UserPreferenceChanged -= PreferencesChanged;
@@ -113,7 +129,7 @@ internal sealed class MonitorWindow : Window
         var header = new Grid { Margin = new Thickness(24, 24, 24, 18) };
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        header.Children.Add(Text("Battery monitor", 28, FontWeights.SemiBold));
+        header.Children.Add(titleText);
         var badge = new Border { CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 5, 10, 5),
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
         badge.SetResourceReference(Border.BackgroundProperty, "Soft");
@@ -164,6 +180,14 @@ internal sealed class MonitorWindow : Window
 
         feedback.SetResourceReference(TextBlock.ForegroundProperty, "Text"); feedback.Margin = new Thickness(0, 14, 0, 0);
         content.Children.Add(feedback);
+        management = new Expander { Header = "Manage AirPods", Margin = new Thickness(0, 14, 0, 0) };
+        management.SetResourceReference(Control.ForegroundProperty, "Text");
+        var controlSurface = new Border { CornerRadius = new CornerRadius(16), Padding = new Thickness(24), Margin = new Thickness(0, 12, 0, 0), Child = controlPanel };
+        controlSurface.SetResourceReference(Border.BackgroundProperty, "Surface");
+        management.Content = controlSurface;
+        management.Expanded += (_, _) => { workspace.Visibility = Visibility.Collapsed; titleText.Text = "AirPods controls"; controlPanel.RefreshState(); };
+        management.Collapsed += (_, _) => { workspace.Visibility = Visibility.Visible; titleText.Text = "Battery monitor"; };
+        content.Children.Add(management);
         var details = new Expander { Header = "Details and limitations", Margin = new Thickness(0, 14, 0, 0) };
         detailText.Text = "Select a nearby broadcast by comparing its estimates with a trusted reading. Selection does not verify ownership or Windows audio connection.";
         detailText.SetResourceReference(TextBlock.ForegroundProperty, "Muted"); detailText.Margin = new Thickness(0, 10, 0, 0);
@@ -189,6 +213,7 @@ internal sealed class MonitorWindow : Window
     internal void RefreshNow()
     {
         var snapshot = session.Snapshot();
+        controlPanel.RefreshState();
         UpdateCandidates(snapshot);
         picker.Visibility = snapshot.SelectedCandidate is null ? Visibility.Visible : Visibility.Collapsed;
         readings.Visibility = snapshot.SelectedCandidate is null ? Visibility.Collapsed : Visibility.Visible;
@@ -267,13 +292,13 @@ internal sealed class MonitorWindow : Window
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Save a private monitor report", Filter = "JSON report (*.json)|*.json",
+            Title = "Save a private CookerPods report", Filter = "JSON report (*.json)|*.json",
             FileName = $"CookerPods-monitor-{DateTime.Now:yyyyMMdd-HHmmss}.json", AddExtension = true
         };
         if (dialog.ShowDialog(this) != true) return;
         try
         {
-            System.IO.File.WriteAllText(dialog.FileName, session.ExportJson());
+            System.IO.File.WriteAllText(dialog.FileName, (management?.IsExpanded == true ? controlPanel.ExportJson() : session.ExportJson()));
             feedback.Text = "Report saved locally. Inspect it before sharing; names and radio addresses are excluded.";
         }
         catch { feedback.Text = "The report could not be saved. Choose a different folder and try again."; }

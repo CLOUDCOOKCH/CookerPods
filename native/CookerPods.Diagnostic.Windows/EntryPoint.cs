@@ -8,11 +8,12 @@ internal static class EntryPoint
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.FirstOrDefault() == "--control-diagnostic") return ControlDiagnostic.RunAsync(args.Skip(1).ToArray()).GetAwaiter().GetResult();
         if (args.Contains("--diagnostic"))
             return DiagnosticProgram.RunAsync(args.Where(a => a != "--diagnostic").ToArray()).GetAwaiter().GetResult();
         if (args.Length == 1 && args[0] == "--help")
         {
-            Console.WriteLine("CookerPods — Windows battery monitor\nOpen without arguments for the monitor window.\n--diagnostic [--seconds 10..120] [--all-paired] [--no-wait] runs the read-only diagnostic.\nNo device controls, driver changes, network listener, or automatic uploads.");
+            Console.WriteLine("CookerPods — Windows battery monitor\nOpen without arguments for the monitor window.\n--diagnostic [--seconds 10..120] [--all-paired] [--no-wait] runs the read-only diagnostic.\n--control-diagnostic lists installed control interfaces; --connect-service N explicitly opens one for status.\nManage AirPods contains development controls requiring the separate driver. No driver installation, network listener, or automatic uploads.");
             return 0;
         }
         if (args.Length == 2 && args[0] == "--ui-smoke") return MonitorUiSmoke.Run(args[1]);

@@ -49,7 +49,7 @@ public sealed class DiagnosticReport
         "A nonzero undefined suffix is flagged; estimates still require the documented prefix and battery ranges. This is not current-firmware validation or decryption.",
         "Paired queries can overlap; counts must not be summed as unique physical devices. Endpoint connection properties do not establish audio routing.",
         "Endpoint watcher snapshots can be partial at the five-second deadline; an empty partial result is inconclusive.",
-        "No AAP/L2CAP transport, ANC controls, ear automation, or encrypted-payload decryption is implemented.",
+        "Diagnostic mode does not open the development AAP control session, write settings, automate playback or decrypt payloads.",
         "Names, addresses, Windows device identifiers, and raw/encrypted payloads are omitted. No automatic uploads."
     ];
 

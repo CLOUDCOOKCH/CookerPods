@@ -1,12 +1,12 @@
 # CookerPods control profile driver (development)
 
-This original KMDF driver opens the Classic Bluetooth AAP service at PSM 0x1001. It is bound to the service PDO, obtains that device's address from Windows and exposes a fixed x64/ARM64-neutral IOCTL ABI. A client cannot supply arbitrary radio addresses, PSMs, kernel pointers or general Bluetooth write packets. One client owns a device at a time. The current allowlist covers handshake/subscription, noise modes, ear-detection and conversation-awareness settings; it provides no firmware-writing or hearing-aid operations.
+This original KMDF driver opens the Classic Bluetooth AAP service at PSM 0x1001. It is bound to the service PDO, obtains that paired device's address from Windows, requests an authenticated/encrypted link without initiating PIN prompts and exposes a fixed x64/ARM64-neutral IOCTL ABI. A client cannot supply arbitrary radio addresses, PSMs, kernel pointers or general Bluetooth write packets. One client owns a device at a time. The current allowlist covers handshake/subscription, noise modes, ear-detection and conversation-awareness settings; it provides no firmware-writing or hearing-aid operations.
 
 This is development source and **not an installable, production-signed driver release**. Compilation does not validate kernel lifecycle, audio interoperability, hardware command response or current firmware. A Microsoft-signed ARM64 package and isolated real-device/Driver Verifier testing are prerequisites to a normal-user release. The application EXE's signature cannot substitute for kernel-driver signing. No installer or script changes boot policy, Secure Boot, certificate stores or the user's Bluetooth setup.
 
 ## Build
 
-Use Windows, Visual Studio 2022 C++ x64/ARM64 tools and Spectre libraries, and NuGet. The pinned official WDK/SDK NuGet dependencies are restored with their normal integrity/signature verification:
+Use Windows, **64-bit MSBuild**, Visual Studio 2022 C++ x64/ARM64 tools and Spectre libraries, and NuGet. The pinned official WDK/SDK NuGet dependencies are restored with their normal integrity/signature verification:
 
 ```powershell
 nuget restore native/CookerPods.Control.Driver/packages.config -PackagesDirectory artifacts/wdk-packages -NonInteractive

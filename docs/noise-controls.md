@@ -36,7 +36,9 @@ The [AirPodsDesktop README][desktop] lists battery/ear-detection/audio features 
 
 ## Consequence for CookerPods
 
-Keep ANC/transparency controls out of the current standard-driver build. A button, parser, service UUID or socket wrapper would not create the missing transport. There is no new control-enabled executable to test from this research.
+The user subsequently clarified full Windows management as the goal. [Driver-backed development](control-development.md) is now implemented as a separate, unvalidated control path. The public standard-driver battery build remains unchanged.
+
+Keep ANC/transparency controls out of a build that claims to require only standard drivers. A button, parser, service UUID or socket wrapper would not create the missing transport. There is no new control-enabled executable to test from this research.
 
 If the project later chooses an additional-driver architecture, the next concrete gate is **a properly distributed, compatible ARM64 profile driver that opens an AAP session on the actual PC while preserving normal audio**. Then verify exact firmware, current-mode notifications, one explicit reversible mode change and independent physical readback before enabling a control UI. Respect current-mode uncertainty and stop on failed/ambiguous readback. Driver support, signing, recovery and licensing must be resolved before an installation release; x64-only/test-signed examples are research references rather than a ready ARM64 dependency.
 

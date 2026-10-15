@@ -30,7 +30,7 @@ internal static class DiagnosticProgram
             Console.Error.WriteLine("The hardware diagnostic requires Windows. No Bluetooth operation was attempted.");
             return 2;
         }
-        Console.WriteLine("CookerPods Windows connection lab — native preview 0.5.0");
+        Console.WriteLine("CookerPods Windows connection lab — native preview 0.6.0");
         Console.WriteLine("Read-only. Standard Windows APIs; no driver changes, administrator request, settings writes, or network listener.");
         Console.WriteLine("Reports exclude names, addresses, device IDs, and raw broadcasts. Nothing is uploaded.");
         Console.WriteLine("Paired device names are shown in this console only. Nearby candidates are NOT verified as your AirPods.\n");

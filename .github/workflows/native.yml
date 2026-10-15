@@ -35,6 +35,8 @@ jobs:
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           global-json-file: global.json
+      - name: Check native and managed control ABI
+        run: python scripts/check-control-contract.py
       - name: Test native parser and report behavior
         shell: pwsh
         run: |
@@ -49,6 +51,17 @@ jobs:
         run: |
           import subprocess
           subprocess.run(['artifacts/native/win-x64/CookerPods.exe', '--help'], check=True, capture_output=True, timeout=15)
+      - name: Exercise actual control-interface enumeration without opening a channel
+        shell: python
+        run: |
+          import json, subprocess
+          result = subprocess.run(['artifacts/native/win-x64/CookerPods.exe', '--control-diagnostic'], capture_output=True, text=True, timeout=15)
+          report = json.loads(result.stdout)
+          assert report['reportKind'] == 'control-driver-diagnostic'
+          assert report['sessionOpened'] is False and report['snapshot'] is None
+          assert isinstance(report['issues'], list)
+          assert result.returncode in (0, 1)
+          print('Real Windows interface enumeration completed without opening a control session; no hardware assumed.')
       - name: Exercise Windows API fallback and bounded report generation
         run: python scripts/smoke-native-windows.py
       - name: Exercise real WPF controls and capture synthetic UI states
@@ -106,7 +119,7 @@ jobs:
           assert os.environ['GITHUB_SHA'].startswith(tag.rsplit('-', 1)[1])
           report = json.loads(Path('ui-review/ui-smoke-result.json').read_text())
           assert report['success'] and report['sourceCommit'] == os.environ['GITHUB_SHA']
-          assert len(report['captures']) == 5 and all(c['synthetic'] for c in report['captures'])
+          assert len(report['captures']) == 8 and all(c['synthetic'] for c in report['captures'])
           assets = [str(Path('ui-review', c['filename'])) for c in report['captures']]
           subprocess.run(['gh', 'release', 'create', tag, '--target', os.environ['GITHUB_SHA'], '--prerelease',
               '--title', 'Monitor UI review artifacts (synthetic)', '--notes',

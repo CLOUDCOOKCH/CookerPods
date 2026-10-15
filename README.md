@@ -12,6 +12,10 @@ See [usage, privacy, evidence and limitations](docs/native-windows.md). The self
 
 The [hardware observations](docs/hardware-validation.md) record independently confirmed approximate readings and a playback-test snapshot. [Noise-control research](docs/noise-controls.md) explains why the inspected Windows ANC implementations require an additional driver and why ARM64 support remains a separate gate.
 
+## Full-management development
+
+The goal is full AirPods management in Windows. The 0.6 development source adds an original ARM64/x64 AAP profile driver, current-mode reports, noise-mode requests and readback-gated settings in **Manage AirPods**. These controls require a separate installed compatible driver. The source and CI artifacts are development work; production signing, kernel lifecycle testing and real control hardware validation are outstanding. [Implementation and remaining gates](docs/control-development.md).
+
 ## Browser-only website
 
 Website visitors install no companion, extension, PWA, or driver. There is no application backend, external script, analytics, or automatic upload. The static page requests native browser permissions only after an explicit action. The native preview is a separate, explicitly installed experiment, not a hidden dependency of the website.
