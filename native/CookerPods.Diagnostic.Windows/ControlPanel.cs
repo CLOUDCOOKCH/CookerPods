@@ -11,6 +11,7 @@ internal sealed class ControlPanel : StackPanel, IAsyncDisposable
 {
     private readonly Func<IReadOnlyList<ControlDevice>> enumerate;
     private readonly Func<ControlDevice, IAapTransport> transport;
+    private readonly TimeProvider? timeProvider;
     private readonly ListBox services = new() { MinHeight = 44, MaxHeight = 88, BorderThickness = new Thickness(0) };
     private readonly TextBlock status = Text("Checking for the control driver…", 15);
     private readonly TextBlock reported = Text("Reported mode: unknown", 18);
@@ -31,10 +32,11 @@ internal sealed class ControlPanel : StackPanel, IAsyncDisposable
     internal string ConnectionStatus => status.Text;
 
     internal ControlPanel(Func<IReadOnlyList<ControlDevice>>? enumerate = null,
-        Func<ControlDevice, IAapTransport>? transport = null)
+        Func<ControlDevice, IAapTransport>? transport = null, TimeProvider? timeProvider = null)
     {
         this.enumerate = enumerate ?? DriverAapTransport.Enumerate;
         this.transport = transport ?? (device => new DriverAapTransport(device));
+        this.timeProvider = timeProvider;
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetLiveSetting(result, AutomationLiveSetting.Polite);
         status.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
@@ -128,7 +130,7 @@ internal sealed class ControlPanel : StackPanel, IAsyncDisposable
         }
         if (services.SelectedItem is not ListBoxItem { Tag: ControlDevice selected }) return;
         busy = true;
-        controller = new AapController(transport(selected)); RefreshState();
+        controller = new AapController(transport(selected), timeProvider); RefreshState();
         try { await controller.ConnectAsync(lifetime.Token); }
         catch { if (!disposed) status.Text = "Control connection failed. Disconnect, then try again."; }
         finally { busy = false; if (!disposed) RefreshState(); }

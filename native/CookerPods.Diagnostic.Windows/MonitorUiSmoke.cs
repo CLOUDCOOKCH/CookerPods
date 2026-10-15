@@ -17,6 +17,8 @@ internal static class MonitorUiSmoke
     {
         public DateTimeOffset Now { get; set; } = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         public override DateTimeOffset GetUtcNow() => Now;
+        public override long GetTimestamp() => Now.UtcTicks;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
     }
     private sealed class FixtureRadio(LiveMonitorSession session) : IMonitorRadio
     {
@@ -70,7 +72,7 @@ internal static class MonitorUiSmoke
                 using var radio = new FixtureRadio(session);
                 bool controlScene = scene is "controls" or "pending" or "controls-narrow";
                 var controlTransport = new FixtureControlTransport();
-                var controls = controlScene ? new ControlPanel(() => [new("Synthetic paired control service", "synthetic-control-service")], _ => controlTransport) : new ControlPanel(() => []);
+                var controls = controlScene ? new ControlPanel(() => [new("Synthetic paired control service", "synthetic-control-service")], _ => controlTransport, clock) : new ControlPanel(() => []);
                 var window = new MonitorWindow(session, radio, testMode: true, themeOverride: theme, controls: controls)
                 { Width = width, Height = 690 };
                 window.Show();
@@ -184,13 +186,14 @@ internal static class MonitorUiSmoke
         }
     }
 
-    private static void PumpUntil(Window window, Func<bool> condition)
+    private static void PumpUntil(Window window, Func<bool> condition,
+        [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(condition))] string? awaitedState = null)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (!condition())
         {
             Settle(window);
-            if (DateTime.UtcNow > deadline) throw new InvalidOperationException("Timed out waiting for a synthetic UI state.");
+            if (DateTime.UtcNow > deadline) throw new InvalidOperationException($"Timed out waiting for synthetic UI state: {awaitedState}.");
             Thread.Sleep(10);
         }
         Settle(window);
