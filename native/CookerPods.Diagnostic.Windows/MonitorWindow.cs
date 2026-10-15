@@ -101,7 +101,7 @@ internal sealed class MonitorWindow : Window
             closing = true; timer.Stop(); radio.Pause();
             try { await controlPanel.DisposeAsync(); }
             catch { /* Closing still releases the process-owned handle and stops observation. */ }
-            finally { readyToClose = true; Close(); }
+            finally { readyToClose = true; _ = Dispatcher.BeginInvoke((System.Action)Close); }
         };
         Closed += (_, _) =>
         {
