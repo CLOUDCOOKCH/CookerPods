@@ -67,6 +67,7 @@ internal sealed class MonitorWindow : Window
         BuildHeader(); BuildBody(); BuildToolbar();
         AutomationProperties.SetLiveSetting(stateText, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(candidateList, "Nearby broadcast candidates");
+        ScrollViewer.SetHorizontalScrollBarVisibility(candidateList, ScrollBarVisibility.Disabled);
         candidateList.SelectionChanged += (_, _) => UpdateChoose();
         choose.Click += (_, _) =>
         {
@@ -165,13 +166,9 @@ internal sealed class MonitorWindow : Window
         var details = new Expander { Header = "Details and limitations", Margin = new Thickness(0, 14, 0, 0) };
         detailText.Text = "Select a nearby broadcast by comparing its estimates with a trusted reading. Selection does not verify ownership or Windows audio connection.";
         detailText.SetResourceReference(TextBlock.ForegroundProperty, "Muted"); detailText.Margin = new Thickness(0, 10, 0, 0);
+        details.SetResourceReference(Control.ForegroundProperty, "Text");
         details.Content = detailText; content.Children.Add(details);
-        if (testMode)
-        {
-            var synthetic = Text("UI test fixture — synthetic data", 12);
-            synthetic.Margin = new Thickness(0, 12, 0, 0); synthetic.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
-            content.Children.Add(synthetic);
-        }
+
     }
 
     private void BuildToolbar()
@@ -182,7 +179,7 @@ internal sealed class MonitorWindow : Window
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         pause.Margin = new Thickness(0, 0, 10, 0); actions.Children.Add(pause); actions.Children.Add(save);
         toolbar.Children.Add(actions);
-        var privacy = Text("Local only", 12); privacy.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
+        var privacy = Text(testMode ? "Synthetic fixture" : "Local only", 12); privacy.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
         privacy.VerticalAlignment = VerticalAlignment.Center; privacy.Margin = new Thickness(12, 0, 0, 0);
         Grid.SetColumn(privacy, 1); toolbar.Children.Add(privacy);
         Grid.SetRow(toolbar, 2); Root.Children.Add(toolbar);
@@ -342,6 +339,18 @@ internal sealed class MonitorWindow : Window
             <Setter Property="Background" Value="{DynamicResource Accent}"/><Setter Property="Foreground" Value="{DynamicResource ButtonText}"/>
             <Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource AccentHover}"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter Property="Background" Value="{DynamicResource AccentHover}"/></Trigger></Style.Triggers>
           </Style>
+          <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="12"/><Setter Property="Background" Value="{DynamicResource Background}"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+              <Border Background="{TemplateBinding Background}">
+                <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" IsDirectionReversed="True" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}">
+                  <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False" Opacity="0"/></Track.DecreaseRepeatButton>
+                  <Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="{DynamicResource Line}" CornerRadius="5" Margin="3,2"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                  <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False" Opacity="0"/></Track.IncreaseRepeatButton>
+                </Track>
+              </Border>
+            </ControlTemplate></Setter.Value></Setter>
+          </Style>
           <Style TargetType="ListBoxItem">
             <Setter Property="Padding" Value="10"/><Setter Property="Margin" Value="0,0,0,6"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Foreground" Value="{DynamicResource Text}"/>
@@ -409,6 +418,7 @@ internal sealed class MonitorWindow : Window
             caption.Text = percent is null ? "Unavailable" : fresh ? "Approximate" : "Last estimate";
             bar.Visibility = percent.HasValue ? Visibility.Visible : Visibility.Hidden;
             bar.Value = percent ?? 0;
+            bar.SetResourceReference(Control.ForegroundProperty, fresh ? "Bar" : "Muted");
             AutomationProperties.SetName(Value, $"{label}: {(percent.HasValue ? $"approximately {percent} percent, {(fresh ? "fresh" : "historical")}" : "unavailable")}");
             AutomationProperties.SetName(bar, $"{label} approximate battery level");
         }
