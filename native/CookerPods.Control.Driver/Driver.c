@@ -135,7 +135,10 @@ static NTSTATUS CpConnect(CP_DEVICE* ctx)
     brb->ConfigOut.Mtu.Min = L2CAP_MIN_MTU;
     brb->ConfigOut.Mtu.Max = CP_MAX_PACKET;
     brb->ConfigOut.Mtu.Preferred = 1024;
-    brb->ConfigIn = brb->ConfigOut;
+    brb->ConfigIn.Flags = CFG_MTU;
+    brb->ConfigIn.Mtu.Min = L2CAP_MIN_MTU;
+    brb->ConfigIn.Mtu.Max = CP_MAX_PACKET;
+    brb->ConfigIn.Mtu.Preferred = 1024;
     brb->CallbackFlags = CALLBACK_DISCONNECT;
     brb->Callback = CpIndication;
     brb->CallbackContext = ctx;
