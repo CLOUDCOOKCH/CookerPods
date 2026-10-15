@@ -112,19 +112,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          import json, os, re, subprocess
+          import json, os, re, subprocess, sys
           from pathlib import Path
+          def annotate_failure(kind, error, traceback):
+              detail = (kind.__name__ + ': ' + str(error)).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::error title=UI evidence publication::' + detail, flush=True)
+          sys.excepthook = annotate_failure
           tag = os.environ['GITHUB_REF_NAME']
-          assert re.fullmatch(r'ui-review-[0-9.]+-[0-9a-f]{7,40}', tag)
-          assert os.environ['GITHUB_SHA'].startswith(tag.rsplit('-', 1)[1])
+          assert re.fullmatch(r'ui-review-[0-9.]+-[0-9a-f]{7,40}', tag), 'Invalid UI review tag'
+          assert os.environ['GITHUB_SHA'].startswith(tag.rsplit('-', 1)[1]), 'Review tag must name its source commit'
           report = json.loads(Path('ui-review/ui-smoke-result.json').read_text())
-          assert report['success'] and report['sourceCommit'] == os.environ['GITHUB_SHA']
-          assert len(report['captures']) == 8 and all(c['synthetic'] for c in report['captures'])
+          assert report['success'], 'UI smoke must succeed'
+          assert report['sourceCommit'] == os.environ['GITHUB_SHA'], 'Capture source must match the review tag commit'
+          assert len(report['captures']) == 8 and all(c['synthetic'] for c in report['captures']), 'Expected eight synthetic captures'
           assets = [str(Path('ui-review', c['filename'])) for c in report['captures']]
-          subprocess.run(['gh', 'release', 'create', tag, '--target', os.environ['GITHUB_SHA'], '--prerelease',
+          publication = subprocess.run(['gh', 'release', 'create', tag, '--target', os.environ['GITHUB_SHA'], '--prerelease',
               '--title', 'Monitor UI review artifacts (synthetic)', '--notes',
               'Development review evidence only. Actual WPF client-area captures with synthetic fixtures; no AirPods hardware is represented. No app download is published in this review release.',
-              *assets, 'ui-review/ui-smoke-result.json'], check=True)
+              *assets, 'ui-review/ui-smoke-result.json'], capture_output=True, text=True)
+          if publication.returncode:
+              raise RuntimeError(publication.stderr.strip()[:2000] or 'GitHub release creation failed')
+          print(publication.stdout)
 
   publish-preview:
     needs: build-and-package
