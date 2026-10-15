@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Collections.Concurrent;
 
 namespace CookerPods.Diagnostic.Core;
 
@@ -11,13 +12,14 @@ public sealed record DiagnosticIssue(string Stage, string Kind, string ErrorCode
 public sealed record PairedDeviceObservation(string Label, bool NameSuggestsAirPods, string ConnectionStatus,
     string Source, string ConnectionStatusSource);
 public sealed record PairedEnumerationObservation(string Source, int Enumerated, int Reported,
-    int NamesSuggestingAirPods, bool Truncated);
+    int NamesSuggestingAirPods, bool Truncated, string Completion = "FindAllCompleted",
+    double? ObservationSeconds = null);
 public sealed record AdapterObservation(bool Found, bool? LowEnergySupported, bool? CentralRoleSupported);
 
 public sealed class DiagnosticReport
 {
     public int SchemaVersion { get; } = 2;
-    public string ProbeVersion { get; } = "0.4.1-native-preview";
+    public string ProbeVersion { get; } = "0.4.2-native-preview";
     public DateTimeOffset StartedAtUtc { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? FinishedAtUtc { get; set; }
     public string? WindowsVersion { get; init; }
@@ -26,13 +28,16 @@ public sealed class DiagnosticReport
     public int RequestedScanSeconds { get; init; }
     public double? ActualScanSeconds { get; set; }
     public bool ScanStarted { get; set; }
+    public DateTimeOffset? ScanStartedAtUtc { get; set; }
     public bool Canceled { get; set; }
     public string? WatcherStopReason { get; set; }
+    public string? MetadataCompletion { get; set; }
+    public double? MetadataSeconds { get; set; }
     public AdapterObservation? Adapter { get; set; }
     public int? PairedDevicesEnumerated { get; set; }
     public List<PairedDeviceObservation> PairedDevices { get; } = [];
     public List<PairedEnumerationObservation> PairedEnumeration { get; } = [];
-    public List<DiagnosticIssue> Issues { get; } = [];
+    public ConcurrentQueue<DiagnosticIssue> Issues { get; } = new();
     public ScanObservations? Observations { get; set; }
     public string[] Limitations { get; } =
     [
@@ -41,7 +46,9 @@ public sealed class DiagnosticReport
         "Nearby broadcasts are not associated with paired devices; rotating addresses may create multiple candidates.",
         "Battery estimates are experimental 10-point plaintext fields, not verified left/right values or continuous telemetry.",
         "Decoder outcomes record the first failed check, not proof of encryption. Historical estimates retain their own timestamps and may be stale.",
+        "A nonzero undefined suffix is flagged; estimates still require the documented prefix and battery ranges. This is not current-firmware validation or decryption.",
         "Paired queries can overlap; counts must not be summed as unique physical devices. Endpoint connection properties do not establish audio routing.",
+        "Endpoint watcher snapshots can be partial at the five-second deadline; an empty partial result is inconclusive.",
         "No AAP/L2CAP transport, ANC controls, ear automation, or encrypted-payload decryption is implemented.",
         "Names, addresses, Windows device identifiers, and raw/encrypted payloads are omitted. No automatic uploads."
     ];

@@ -49,6 +49,8 @@ jobs:
         run: |
           & artifacts/native/win-x64/CookerPods-Diagnostic.exe --help
           if ($LASTEXITCODE -ne 0) { throw 'Packaged x64 startup failed' }
+      - name: Exercise Windows API fallback and bounded report generation
+        run: python scripts/smoke-native-windows.py
       - name: Verify PE architectures
         shell: python
         run: |

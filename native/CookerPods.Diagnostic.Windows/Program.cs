@@ -29,7 +29,7 @@ internal static class Program
             Console.Error.WriteLine("The hardware diagnostic requires Windows. No Bluetooth operation was attempted.");
             return 2;
         }
-        Console.WriteLine("CookerPods Windows connection lab — native preview 0.4.1");
+        Console.WriteLine("CookerPods Windows connection lab — native preview 0.4.2");
         Console.WriteLine("Read-only. Standard Windows APIs; no driver changes, administrator request, settings writes, or network listener.");
         Console.WriteLine("Reports exclude names, addresses, device IDs, and raw broadcasts. Nothing is uploaded.");
         Console.WriteLine("Paired device names are shown in this console only. Nearby candidates are NOT verified as your AirPods.\n");
@@ -46,12 +46,13 @@ internal static class Program
         int exit = 0;
         try
         {
-            await InspectAdapter(report, canceled.Token);
-            await InspectPairedDevices(report, allPaired, canceled.Token);
-            if (!canceled.IsCancellationRequested) await ObserveBroadcasts(report, seconds, canceled.Token);
+            // Start the radio first: metadata queries must not miss the initial
+            // case-open advertisements. Issues use a thread-safe queue.
+            await Task.WhenAll(ObserveBroadcasts(report, seconds, canceled.Token),
+                InspectMetadata(report, allPaired, canceled.Token));
         }
         catch (OperationCanceledException) { report.Canceled = true; }
-        catch (Exception error) { report.Issues.Add(DiagnosticIssue.From("diagnostic", error)); exit = 1; }
+        catch (Exception error) { report.Issues.Enqueue(DiagnosticIssue.From("diagnostic", error)); exit = 1; }
         finally { Console.CancelKeyPress -= cancelHandler; }
         report.Canceled |= canceled.IsCancellationRequested;
         report.FinishedAtUtc = DateTimeOffset.UtcNow;
@@ -62,7 +63,10 @@ internal static class Program
             {
                 Console.WriteLine($"{candidate.Label}: {candidate.Observations} observation(s), last seen {candidate.LastSeenUtc:HH:mm:ss} UTC; identity UNASSOCIATED");
                 if (candidate.ExperimentalEstimate is { } estimate)
+                {
                     Console.WriteLine($"  Experimental: model code {estimate.ModelCode}; slot A {Percent(estimate.EarbudSlotAPercent)}, slot B {Percent(estimate.EarbudSlotBPercent)}, case {Percent(estimate.CasePercent)}. Left/right mapping unverified.");
+                    if (estimate.HasNonzeroSuffix) Console.WriteLine("  Undefined suffix differs from historical example. Firmware layout remains unverified.");
+                }
                 else Console.WriteLine($"  Latest frame is unknown: {candidate.LatestDecodeOutcome}. No current battery value is inferred.");
                 Console.WriteLine($"  First-check outcomes: {string.Join(", ", candidate.DecodeOutcomes.Select(p => $"{p.Key}={p.Value}"))}.");
                 if (candidate.LastDecodedEstimate is { } historical)
@@ -98,7 +102,30 @@ internal static class Program
 
     private static string Percent(int? value) => value is { } n ? $"about {n}%" : "unavailable";
 
-    private static void Help() => Console.WriteLine("CookerPods-Diagnostic [--seconds 10..120] [--all-paired] [--no-wait]\nDefault: 30-second passive scan; three paired-device queries with names shown locally only for AirPods matches.\n--all-paired shows other paired names locally; no names are exported. No settings writes or network API.");
+    private static void Help() => Console.WriteLine("CookerPods-Diagnostic [--seconds 10..120] [--all-paired] [--no-wait]\nDefault: immediate 30-second passive scan; concurrent metadata with a 20-second budget and paired endpoint windows up to 5 seconds; three paired-device queries with names shown locally only for AirPods matches.\n--all-paired shows other paired names locally; no names are exported. No settings writes or network API.");
+
+    private static async Task InspectMetadata(DiagnosticReport report, bool allPaired, CancellationToken token)
+    {
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
+        budget.CancelAfter(TimeSpan.FromSeconds(20));
+        var elapsed = Stopwatch.StartNew();
+        try
+        {
+            await InspectAdapter(report, budget.Token);
+            await InspectPairedDevices(report, allPaired, budget.Token);
+            report.MetadataCompletion = "Completed";
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            report.MetadataCompletion = "DeadlineElapsed";
+            report.Issues.Enqueue(new("metadata", "DeadlineElapsed", "20s"));
+        }
+        finally
+        {
+            if (token.IsCancellationRequested) report.MetadataCompletion = "UserCanceled";
+            report.MetadataSeconds = Math.Round(elapsed.Elapsed.TotalSeconds, 2);
+        }
+    }
 
     private static async Task InspectAdapter(DiagnosticReport report, CancellationToken token)
     {
@@ -109,7 +136,7 @@ internal static class Program
             Console.WriteLine(adapter is null ? "No default Bluetooth adapter was returned." : $"Default adapter found. BLE support: {adapter.IsLowEnergySupported}; central role: {adapter.IsCentralRoleSupported}.");
         }
         catch (OperationCanceledException) { throw; }
-        catch (Exception error) { report.Issues.Add(DiagnosticIssue.From("adapter", error)); }
+        catch (Exception error) { report.Issues.Enqueue(DiagnosticIssue.From("adapter", error)); }
     }
 
     private static bool NameSuggestsAirPods(string name) => name.Contains("AirPods", StringComparison.OrdinalIgnoreCase);
@@ -130,7 +157,7 @@ internal static class Program
             await InspectPairedQuery(report, allPaired, source, selector, true, token);
         }
         Console.WriteLine("Paired queries can overlap; their counts are not unique devices or confirmation of audio routing.");
-        Console.WriteLine("Every returned entry is reported anonymously (up to 32 per query). Use --all-paired to show other names locally.");
+        Console.WriteLine("Collected entries are reported anonymously (up to 32 per query). Endpoint snapshots may be partial. Use --all-paired to show other names locally.");
     }
 
     private static async Task InspectPairedQuery(DiagnosticReport report, bool allPaired,
@@ -138,51 +165,148 @@ internal static class Program
     {
         try
         {
-            var devices = endpoints
-                ? await DeviceInformation.FindAllAsync(selector, ["System.Devices.Aep.IsConnected"],
-                    DeviceInformationKind.AssociationEndpoint).AsTask().WaitAsync(TimeSpan.FromSeconds(10), token)
-                : await DeviceInformation.FindAllAsync(selector).AsTask().WaitAsync(TimeSpan.FromSeconds(10), token);
-            if (!endpoints) report.PairedDevicesEnumerated = devices.Count;
+            token.ThrowIfCancellationRequested();
+            EndpointSnapshot? endpointResult = endpoints ? await ObservePairedEndpoints(report, source, selector, token) : null;
+            var devices = endpointResult?.Devices
+                ?? (await DeviceInformation.FindAllAsync(selector).AsTask(token).WaitAsync(TimeSpan.FromSeconds(10), token)).ToArray();
+            if (!endpoints) report.PairedDevicesEnumerated = devices.Length;
             int matches = devices.Count(d => NameSuggestsAirPods(d.Name));
             var retained = devices.OrderByDescending(d => NameSuggestsAirPods(d.Name)).Take(32).ToArray();
-            report.PairedEnumeration.Add(new(source, devices.Count, retained.Length, matches, devices.Count > retained.Length));
-            Console.WriteLine($"{source}: {devices.Count} paired entry/entries; {matches} name match(es); {retained.Length} reported.");
-            int ordinal = 0, statusReads = 0;
-            foreach (var info in retained)
+            int summaryIndex = report.PairedEnumeration.Count, firstEntry = report.PairedDevices.Count;
+            report.PairedEnumeration.Add(new(source, devices.Length, 0, matches,
+                endpointResult?.Truncated == true || devices.Length > retained.Length,
+                endpointResult?.Completion ?? "FindAllCompleted", endpointResult?.Seconds));
+            Console.WriteLine($"{source}: {devices.Length} snapshot entry/entries; {matches} name match(es); {endpointResult?.Completion ?? "FindAllCompleted"}.");
+            try
             {
-                token.ThrowIfCancellationRequested();
-                bool suggestsAirPods = NameSuggestsAirPods(info.Name);
-                string label = $"{source} candidate {++ordinal}";
-                string status = "NotRead", statusSource = "NameFilterOrReadLimit";
-                if (endpoints)
+                int ordinal = 0, statusReads = 0;
+                foreach (var info in retained)
                 {
-                    status = info.Properties.TryGetValue("System.Devices.Aep.IsConnected", out var value) && value is bool connected
-                        ? connected ? "Connected" : "Disconnected" : "NotReported";
-                    statusSource = "System.Devices.Aep.IsConnected";
-                }
-                else if (suggestsAirPods && statusReads++ < 4)
-                {
-                    statusSource = "BluetoothDevice.ConnectionStatus";
-                    try
+                    token.ThrowIfCancellationRequested();
+                    bool suggestsAirPods = NameSuggestsAirPods(info.Name);
+                    string label = $"{source} candidate {++ordinal}";
+                    string status = "NotRead", statusSource = "NameFilterOrReadLimit";
+                    if (endpoints)
                     {
-                        using var device = await BluetoothDevice.FromIdAsync(info.Id).AsTask().WaitAsync(TimeSpan.FromSeconds(5), token);
-                        status = device?.ConnectionStatus.ToString() ?? "AccessUnavailable";
+                        status = info.Properties.TryGetValue("System.Devices.Aep.IsConnected", out var value) && value is bool connected
+                            ? connected ? "Connected" : "Disconnected" : "NotReported";
+                        statusSource = "System.Devices.Aep.IsConnected";
                     }
-                    catch (OperationCanceledException) { throw; }
-                    catch (Exception error) { report.Issues.Add(DiagnosticIssue.From("paired-device-" + source, error)); }
+                    else if (suggestsAirPods && statusReads++ < 4)
+                    {
+                        statusSource = "BluetoothDevice.ConnectionStatus";
+                        try
+                        {
+                            using var device = await BluetoothDevice.FromIdAsync(info.Id).AsTask().WaitAsync(TimeSpan.FromSeconds(5), token);
+                            status = device?.ConnectionStatus.ToString() ?? "AccessUnavailable";
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception error) { report.Issues.Enqueue(DiagnosticIssue.From("paired-device-" + source, error)); }
+                    }
+                    // Include unmatched entries anonymously: a name filter must not
+                    // turn an enumerated device into an unexplained empty report.
+                    report.PairedDevices.Add(new(label, suggestsAirPods, status, source, statusSource));
+                    if (allPaired || suggestsAirPods)
+                    {
+                        string localName = new(info.Name.Where(c => !char.IsControl(c)).Take(100).ToArray());
+                        Console.WriteLine($"  {label}: {localName} — OS connection: {status}. Name matching is a heuristic.");
+                    }
                 }
-                // Include unmatched entries anonymously: a name filter must not
-                // turn an enumerated device into an unexplained empty report.
-                report.PairedDevices.Add(new(label, suggestsAirPods, status, source, statusSource));
-                if (allPaired || suggestsAirPods)
+            }
+            finally
+            {
+                int reported = report.PairedDevices.Count - firstEntry;
+                report.PairedEnumeration[summaryIndex] = report.PairedEnumeration[summaryIndex] with
                 {
-                    string localName = new(info.Name.Where(c => !char.IsControl(c)).Take(100).ToArray());
-                    Console.WriteLine($"  {label}: {localName} — OS connection: {status}. Name matching is a heuristic.");
-                }
+                    Reported = reported,
+                    Truncated = endpointResult?.Truncated == true || reported < devices.Length
+                };
             }
         }
         catch (OperationCanceledException) { throw; }
-        catch (Exception error) { report.Issues.Add(DiagnosticIssue.From("paired-enumeration-" + source, error)); }
+        catch (Exception error) { report.Issues.Enqueue(DiagnosticIssue.From("paired-enumeration-" + source, error)); }
+    }
+
+    private sealed record EndpointSnapshot(DeviceInformation[] Devices, string Completion, bool Truncated, double Seconds);
+
+    private static async Task<EndpointSnapshot> ObservePairedEndpoints(DiagnosticReport report,
+        string source, string selector, CancellationToken token)
+    {
+        var watcher = DeviceInformation.CreateWatcher(selector, ["System.Devices.Aep.IsConnected"],
+            DeviceInformationKind.AssociationEndpoint);
+        var entries = new Dictionary<string, DeviceInformation>();
+        object gate = new();
+        bool closed = false, truncated = false;
+        int callbackFailures = 0;
+        var finished = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Added(DeviceWatcher sender, DeviceInformation info)
+        {
+            lock (gate)
+            {
+                if (closed) return;
+                try
+                {
+                    if (entries.Count >= 128 && !entries.ContainsKey(info.Id)) { truncated = true; return; }
+                    entries[info.Id] = info;
+                }
+                catch { callbackFailures++; }
+            }
+        }
+        void Updated(DeviceWatcher sender, DeviceInformationUpdate update)
+        {
+            lock (gate)
+            {
+                if (closed) return;
+                try { if (entries.TryGetValue(update.Id, out var info)) info.Update(update); }
+                catch { callbackFailures++; }
+            }
+        }
+        void Removed(DeviceWatcher sender, DeviceInformationUpdate update)
+        {
+            lock (gate)
+            {
+                if (closed) return;
+                try { entries.Remove(update.Id); } catch { callbackFailures++; }
+            }
+        }
+        void Completed(DeviceWatcher sender, object args) => finished.TrySetResult("InitialEnumerationCompleted");
+        void Stopped(DeviceWatcher sender, object args) => finished.TrySetResult("StoppedBeforeInitialEnumeration");
+        watcher.Added += Added;
+        watcher.Updated += Updated;
+        watcher.Removed += Removed;
+        watcher.EnumerationCompleted += Completed;
+        watcher.Stopped += Stopped;
+        var elapsed = Stopwatch.StartNew();
+        try
+        {
+            watcher.Start();
+            await Task.WhenAny(finished.Task, Task.Delay(TimeSpan.FromSeconds(5), token));
+            string completion = finished.Task.IsCompletedSuccessfully ? finished.Task.Result
+                : token.IsCancellationRequested ? "Canceled" : "PartialAtDeadline";
+            lock (gate)
+            {
+                closed = true;
+                var snapshot = entries.Values.ToArray();
+                entries.Clear(); // Private endpoint identifiers never enter a report.
+                return new(snapshot, completion, truncated, Math.Round(elapsed.Elapsed.TotalSeconds, 2));
+            }
+        }
+        finally
+        {
+            lock (gate) { closed = true; entries.Clear(); }
+            try
+            {
+                if (watcher.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted)
+                    watcher.Stop();
+            }
+            catch (Exception error) { report.Issues.Enqueue(DiagnosticIssue.From("endpoint-stop-" + source, error)); }
+            watcher.Added -= Added;
+            watcher.Updated -= Updated;
+            watcher.Removed -= Removed;
+            watcher.EnumerationCompleted -= Completed;
+            watcher.Stopped -= Stopped;
+            if (callbackFailures > 0) report.Issues.Enqueue(new("endpoint-callback-" + source, "ReadFailure", $"count:{callbackFailures}"));
+        }
     }
 
     private static async Task ObserveBroadcasts(DiagnosticReport report, int seconds, CancellationToken token)
@@ -216,20 +340,21 @@ internal static class Program
             Console.WriteLine($"\nObserving broadcasts for up to {seconds} seconds. Open your AirPods case nearby; leave Windows pairing intact. Ctrl+C ends the scan.");
             watcher.Start();
             report.ScanStarted = true;
+            report.ScanStartedAtUtc = DateTimeOffset.UtcNow;
             await Task.WhenAny(Task.Delay(TimeSpan.FromSeconds(seconds), token), ended.Task);
             report.WatcherStopReason = ended.Task.IsCompletedSuccessfully ? ended.Task.Result
                 : token.IsCancellationRequested ? "UserCanceled" : "DurationElapsed";
             Console.WriteLine($"Watcher finished: {report.WatcherStopReason}.");
         }
-        catch (Exception error) { report.Issues.Add(DiagnosticIssue.From("advertisement-watcher", error)); }
+        catch (Exception error) { report.Issues.Enqueue(DiagnosticIssue.From("advertisement-watcher", error)); }
         finally
         {
             report.Observations = collector.Snapshot(close: true);
-            try { watcher.Stop(); } catch (Exception error) { report.Issues.Add(DiagnosticIssue.From("watcher-stop", error)); }
+            try { watcher.Stop(); } catch (Exception error) { report.Issues.Enqueue(DiagnosticIssue.From("watcher-stop", error)); }
             watcher.Received -= Received;
             watcher.Stopped -= Stopped;
             report.ActualScanSeconds = Math.Round(elapsed.Elapsed.TotalSeconds, 2);
-            if (callbackFailures > 0) report.Issues.Add(new("advertisement-callback", "ReadFailure", $"count:{callbackFailures}"));
+            if (callbackFailures > 0) report.Issues.Enqueue(new("advertisement-callback", "ReadFailure", $"count:{callbackFailures}"));
         }
     }
 }

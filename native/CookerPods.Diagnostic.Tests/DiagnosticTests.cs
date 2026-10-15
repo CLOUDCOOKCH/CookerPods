@@ -47,7 +47,7 @@ public sealed class DiagnosticTests
     public void OtherSizesAreNotGuessed(int size) => Assert.Null(ProximityFrame.Decode(new byte[size]));
 
     [Theory]
-    [InlineData(0, 0x10)] [InlineData(1, 24)] [InlineData(2, 2)] [InlineData(10, 1)]
+    [InlineData(0, 0x10)] [InlineData(1, 24)] [InlineData(2, 2)]
     public void UnrecognizedTypeOrLayoutIsNotDecoded(int offset, byte value)
     {
         var bytes = Frame(); bytes[offset] = value;
@@ -108,7 +108,7 @@ public sealed class DiagnosticTests
         var collector = new ObservationCollector();
         collector.Observe(address, Frame(), DateTimeOffset.UtcNow);
         var report = new DiagnosticReport { Observations = collector.Snapshot() };
-        report.Issues.Add(DiagnosticIssue.From("test", new Exception("private name and AA:BB:CC:DD:EE:FF")));
+        report.Issues.Enqueue(DiagnosticIssue.From("test", new Exception("private name and AA:BB:CC:DD:EE:FF")));
         string json = report.ToJson();
         Assert.DoesNotContain("AABBCCDDEEFF", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(address.ToString(), json);
@@ -133,7 +133,6 @@ public sealed class DiagnosticTests
     [InlineData(0, 16, ProximityDecodeOutcome.NotProximityMessage)]
     [InlineData(1, 24, ProximityDecodeOutcome.UnsupportedDeclaredLength)]
     [InlineData(2, 2, ProximityDecodeOutcome.UnsupportedLayoutVersion)]
-    [InlineData(10, 1, ProximityDecodeOutcome.UnsupportedByte10)]
     [InlineData(6, 0xbb, ProximityDecodeOutcome.ReservedBatteryNibble)]
     public void RejectionExplainsFirstFailedCheckWithoutReturningRawFields(int offset, byte value, ProximityDecodeOutcome expected)
     {
@@ -149,17 +148,17 @@ public sealed class DiagnosticTests
         var collector = new ObservationCollector();
         var now = DateTimeOffset.UtcNow;
         collector.Observe(123, Frame(0xaa, 0x08), now);
-        var unknown = Frame(); unknown[10] = 1;
+        var unknown = Frame(); unknown[2] = 2;
         collector.Observe(123, unknown, now.AddSeconds(10));
         var item = Assert.Single(collector.Snapshot().Candidates);
         Assert.Null(item.ExperimentalEstimate);
-        Assert.Equal(ProximityDecodeOutcome.UnsupportedByte10, item.LatestDecodeOutcome);
+        Assert.Equal(ProximityDecodeOutcome.UnsupportedLayoutVersion, item.LatestDecodeOutcome);
         Assert.Equal(now.AddSeconds(10), item.LastSeenUtc);
         Assert.Equal(now, item.LastDecodedEstimate!.ObservedAtUtc);
         Assert.Equal(100, item.LastDecodedEstimate.Estimate.EarbudSlotAPercent);
         Assert.Equal(80, item.LastDecodedEstimate.Estimate.CasePercent);
         Assert.Equal(1, item.DecodeOutcomes[ProximityDecodeOutcome.Decoded]);
-        Assert.Equal(1, item.DecodeOutcomes[ProximityDecodeOutcome.UnsupportedByte10]);
+        Assert.Equal(1, item.DecodeOutcomes[ProximityDecodeOutcome.UnsupportedLayoutVersion]);
     }
 
     [Fact]
@@ -193,13 +192,13 @@ public sealed class DiagnosticTests
     {
         var collector = new ObservationCollector();
         collector.Observe(0xAABBCCDDEEFF, Frame(), DateTimeOffset.UtcNow);
-        var invalid = Frame(); invalid[10] = 1;
+        var invalid = Frame(); invalid[2] = 2;
         collector.Observe(0xAABBCCDDEEFF, invalid, DateTimeOffset.UtcNow);
         var report = new DiagnosticReport { Observations = collector.Snapshot() };
         report.PairedDevices.Add(new("ClassicAssociationEndpoint candidate 1", false, "Connected",
             "ClassicAssociationEndpoint", "System.Devices.Aep.IsConnected"));
         string json = report.ToJson();
-        Assert.Contains("UnsupportedByte10", json);
+        Assert.Contains("UnsupportedLayoutVersion", json);
         Assert.DoesNotContain("AABBCCDDEEFF", json);
         using var parsed = JsonDocument.Parse(json);
         var candidate = parsed.RootElement.GetProperty("observations").GetProperty("candidates")[0];
@@ -207,5 +206,61 @@ public sealed class DiagnosticTests
         Assert.NotEqual(JsonValueKind.Null, candidate.GetProperty("lastDecodedEstimate").ValueKind);
         Assert.Equal(JsonValueKind.Null, candidate.GetProperty("experimentalEstimate").ValueKind);
         Assert.False(parsed.RootElement.GetProperty("pairedDevices")[0].GetProperty("nameSuggestsAirPods").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData(0)] [InlineData(1)] [InlineData(127)] [InlineData(128)] [InlineData(255)]
+    public void UndefinedSuffixIsFlaggedWithoutInvalidatingDocumentedBatteryFields(byte suffix)
+    {
+        var bytes = Frame(); bytes[10] = suffix;
+        var result = ProximityFrame.Analyze(bytes);
+        Assert.NotNull(result.Estimate);
+        Assert.Equal(70, result.Estimate.EarbudSlotAPercent);
+        Assert.Equal(80, result.Estimate.EarbudSlotBPercent);
+        Assert.Equal(50, result.Estimate.CasePercent);
+        Assert.Equal(suffix != 0, result.Estimate.HasNonzeroSuffix);
+        Assert.Equal(suffix == 0 ? ProximityDecodeOutcome.Decoded : ProximityDecodeOutcome.DecodedWithNonzeroSuffix, result.Outcome);
+        if (suffix != 0) Assert.Contains("firmware layout unverified", result.Estimate.Confidence);
+    }
+
+    [Fact]
+    public void NonzeroSuffixCannotBypassRangeOrPrefixChecks()
+    {
+        var bytes = Frame(0xbb); bytes[10] = 0xff;
+        Assert.Equal(ProximityDecodeOutcome.ReservedBatteryNibble, ProximityFrame.Analyze(bytes).Outcome);
+        Assert.Null(ProximityFrame.Decode(bytes));
+        bytes[2] = 2;
+        Assert.Equal(ProximityDecodeOutcome.UnsupportedLayoutVersion, ProximityFrame.Analyze(bytes).Outcome);
+        Assert.Null(ProximityFrame.Decode(bytes));
+    }
+
+    [Fact]
+    public void NonzeroSuffixDoesNotTurnUnavailableBatteryIntoZero()
+    {
+        var bytes = Frame(0xff, 0xff); bytes[10] = 0x80;
+        var estimate = ProximityFrame.Decode(bytes);
+        Assert.NotNull(estimate);
+        Assert.True(estimate.HasNonzeroSuffix);
+        Assert.Null(estimate.EarbudSlotAPercent);
+        Assert.Null(estimate.EarbudSlotBPercent);
+        Assert.Null(estimate.CasePercent);
+    }
+
+    [Fact]
+    public void IgnoredEncryptedTailDoesNotAffectEstimate()
+    {
+        var bytes = Frame(); bytes[10] = 0x80;
+        var before = ProximityFrame.Decode(bytes);
+        bytes.AsSpan(11).Fill(0xe3);
+        Assert.Equal(before, ProximityFrame.Decode(bytes));
+    }
+
+    [Fact]
+    public void ConcurrentMetadataAndRadioIssuesRemainAnArrayWithoutLostEntries()
+    {
+        var report = new DiagnosticReport();
+        Parallel.For(0, 500, _ => report.Issues.Enqueue(new("test", "Synthetic", "0")));
+        using var parsed = JsonDocument.Parse(report.ToJson());
+        Assert.Equal(500, parsed.RootElement.GetProperty("issues").GetArrayLength());
     }
 }
