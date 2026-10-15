@@ -10,6 +10,8 @@ The window observes nearby battery broadcasts using standard Windows drivers. Ex
 
 See [usage, privacy, evidence and limitations](docs/native-windows.md). The self-contained, unsigned preview needs no separate .NET runtime or administrator request. It includes no ANC controls, ear automation, custom driver, browser bridge or network API. The earlier bounded diagnostic remains available with `--diagnostic`.
 
+The [hardware observations](docs/hardware-validation.md) record independently confirmed approximate readings and a playback-test snapshot. [Noise-control research](docs/noise-controls.md) explains why the inspected Windows ANC implementations require an additional driver and why ARM64 support remains a separate gate.
+
 ## Browser-only website
 
 Website visitors install no companion, extension, PWA, or driver. There is no application backend, external script, analytics, or automatic upload. The static page requests native browser permissions only after an explicit action. The native preview is a separate, explicitly installed experiment, not a hidden dependency of the website.

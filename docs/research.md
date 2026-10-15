@@ -1,6 +1,6 @@
 # Browser-only experiment
 
-Historical browser-only scope: the user has since explicitly authorized a native Windows experiment after unsuccessful GATT connections. See [the native preview](native-windows.md). The API restrictions and browser results below remain relevant; the native path is now an explicit alternative, not an implicit replacement.
+Historical browser-only scope: the user has since explicitly authorized a native Windows experiment after unsuccessful GATT connections. See [the native preview](native-windows.md). The API restrictions and browser results below remain relevant; the native path is now an explicit alternative, not an implicit replacement. Native [hardware observations](hardware-validation.md) and [Windows noise-control research](noise-controls.md) record subsequent evidence and constraints.
 
 Scope: Windows 11 25H2, current Edge, AirPods Pro 2, existing Intel Bluetooth driver. No installed bridge, browser flags, or custom drivers. No physical hardware has been tested in the cloud workspace.
 

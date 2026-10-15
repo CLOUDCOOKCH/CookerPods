@@ -8,7 +8,7 @@ web diagnostic; Windows desktop monitor
 
 ## Users
 
-The intended user wants to manage AirPods directly in a browser, with an experience comparable in ambition to ear-web. The current evaluation target is AirPods Pro 2 on Windows 11 25H2, current Microsoft Edge, and an existing Intel Bluetooth adapter/driver.
+The user wants AirPods management on Windows, originally browser-only with ambitions comparable to ear-web. Native installation and a Windows app window were explicitly authorized after browser access failed. The browser evaluation target is AirPods Pro 2 on Windows 11 25H2/current Edge with an existing Intel Bluetooth driver. Native previews have since been tested by the user on a private Windows ARM64 PC with renamed AirPods Pro 2.
 
 ## Product Purpose
 
@@ -35,7 +35,7 @@ CookerPods is independent, open-source research, unaffiliated with Apple. The us
 
 ## Evidence on Hand
 
-`index.html`, `styles.css`, `app.js`, `probe.js`, `README.md`, and `docs/` describe the implemented diagnostic. Unit and browser integration checks use mocked browser hardware APIs; they do not validate AirPods support. Review captures in `/tmp/cookerpods-review/` show desktop initial, mobile connected, and desktop dark connected states with mocked devices, including an intentionally malicious name rendered as plain text. These captures are temporary development evidence, not product proof. Browser hardware tests failed to establish GATT access. Native 0.4.0 and 0.4.2 ARM64 reports yielded approximate readings the user independently confirmed. The 0.5.0 window requires a new ARM64 hardware run; synthetic WPF captures validate layout/controls only. See docs/native-windows.md.
+`index.html`, `styles.css`, `app.js`, `probe.js`, `README.md`, and `docs/` describe the implemented diagnostic. Unit and browser integration checks use mocked browser hardware APIs; they do not validate AirPods support. Review captures in `/tmp/cookerpods-review/` show desktop initial, mobile connected, and desktop dark connected states with mocked devices, including an intentionally malicious name rendered as plain text. These captures are temporary development evidence, not product proof. Browser hardware tests failed to establish GATT access. Native 0.4.0 and 0.4.2 ARM64 reports yielded approximate readings the user independently confirmed. The user subsequently ran the 0.5.0 live window: fresh 100%/100%/70% approximate readings matched an independent reference, and a YouTube playback test still exported fresh earbud values with unavailable case. These snapshots do not establish uninterrupted sessions or ownership. See docs/hardware-validation.md. Noise-control research found driver-dependent Windows implementations but no verified standard-driver route for this ARM64 target; see docs/noise-controls.md. Synthetic WPF captures validate layout/controls only.
 
 ## Product Principles
 
