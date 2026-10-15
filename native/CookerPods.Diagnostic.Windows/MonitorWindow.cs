@@ -252,7 +252,9 @@ internal sealed class MonitorWindow : Window
         detailText.Text = "Nearby broadcasts are not linked to Windows pairing or authenticated as yours. Slot A/B are not verified left/right roles. "
             + "A missing value means unavailable, never zero. Readings lose freshness after 15 seconds; candidates expire after two minutes. "
             + "Rotating radio addresses require another explicit selection. Pause stops observation; close this window to end the session. "
-            + "No noise controls, charging flags, ear automation, network server, or automatic upload is implemented."
+            + "Nearby BLE monitoring does not control noise modes or provide verified charging flags. "
+            + "Manage AirPods provides separate experimental driver-backed controls, requiring a compatible signed driver and hardware validation. "
+            + "Windows ear/media automation, a network server and automatic uploads are not implemented."
             + format + issue;
         UpdateChoose();
     }

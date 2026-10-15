@@ -28,6 +28,7 @@ internal sealed class ControlPanel : StackPanel, IAsyncDisposable
     internal Button SettingButton(AapSetting setting) => settings[setting].Action;
     internal AapControlSnapshot? Snapshot => controller?.State.Snapshot();
     internal string ChangeStatus => result.Text;
+    internal string ConnectionStatus => status.Text;
 
     internal ControlPanel(Func<IReadOnlyList<ControlDevice>>? enumerate = null,
         Func<ControlDevice, IAapTransport>? transport = null)
@@ -113,8 +114,15 @@ internal sealed class ControlPanel : StackPanel, IAsyncDisposable
         if (controller is not null)
         {
             busy = true; RefreshState();
-            try { await controller.DisposeAsync(); }
-            catch { status.Text = "The control session ended with an error."; }
+            try
+            {
+                await controller.DisposeAsync();
+                if (!disposed) Announce(status, "Control session disconnected.");
+            }
+            catch
+            {
+                if (!disposed) Announce(status, "The control session ended with an error. Check the driver before reconnecting.");
+            }
             finally { controller = null; busy = false; if (!disposed) RefreshState(); }
             return;
         }
@@ -172,6 +180,8 @@ internal sealed class ControlPanel : StackPanel, IAsyncDisposable
             row.Label.Text = (setting == AapSetting.EarDetection ? "Ear detection: " : "Conversation awareness: ")
                 + (value.HasValue ? value.Value ? "on" : "off" : "unknown");
             row.Action.Content = value.HasValue ? value.Value ? "Turn off" : "Turn on" : "Unavailable";
+            AutomationProperties.SetName(row.Action,
+                (setting == AapSetting.EarDetection ? "Ear detection: " : "Conversation awareness: ") + row.Action.Content);
             row.Action.IsEnabled = !busy && !disposed && s?.CanChange(setting) == true;
         }
         battery.Text = s is null || s.Battery.IsEmpty ? "Device-reported battery: unknown" : "Device-reported battery: " +

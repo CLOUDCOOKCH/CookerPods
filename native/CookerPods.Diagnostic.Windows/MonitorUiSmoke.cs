@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Threading.Channels;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Automation.Peers;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -99,6 +100,10 @@ internal static class MonitorUiSmoke
                         PumpUntil(window, () => controls.Snapshot?.ReportedConversationAwareness == true);
                     }
                     window.RefreshNow();
+                    Require(UIElementAutomationPeer.CreatePeerForElement(controls.SettingButton(AapSetting.EarDetection))?.GetName().StartsWith("Ear detection:") == true,
+                        "Ear detection action must identify its setting to UI Automation.");
+                    Require(UIElementAutomationPeer.CreatePeerForElement(controls.SettingButton(AapSetting.ConversationAwareness))?.GetName().StartsWith("Conversation awareness:") == true,
+                        "Conversation awareness action must identify its setting to UI Automation.");
                 }
                 else if (scene == "empty")
                 {
@@ -151,6 +156,13 @@ internal static class MonitorUiSmoke
                 {
                     controlTransport.Emit(0x0d, 3);
                     PumpUntil(window, () => controls.Snapshot?.LastCommandOutcome == CommandOutcome.DeviceReported);
+                }
+                if (controlScene)
+                {
+                    controls.ConnectButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    PumpUntil(window, () => controls.Snapshot is null && controls.ConnectButton.IsEnabled);
+                    Require(controls.ConnectionStatus == "Control session disconnected.", "Disconnect must stop claiming that device reports are being received.");
+                    Require(controls.ModeButtons.Values.All(b => !b.IsEnabled), "Disconnected mode controls must be unavailable.");
                 }
                 window.Close();
                 PumpUntil(window, () => !window.IsVisible);
