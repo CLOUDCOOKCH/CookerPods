@@ -4,7 +4,7 @@ Read-only feasibility diagnostics for AirPods access on Windows. The original we
 
 ## Native Windows preview
 
-[Download the Windows diagnostic preview](https://github.com/CLOUDCOOKCH/CookerPods/releases/tag/v0.4.0-native-preview).
+[Download the Windows diagnostic preview](https://github.com/CLOUDCOOKCH/CookerPods/releases/tag/v0.4.1-native-preview).
 
 See [download/run instructions and limitations](docs/native-windows.md). The self-contained x64/ARM64 preview needs no separately installed .NET runtime, driver replacement, or administrator request. It has no browser bridge or network API yet. It records paired-device status separately from unassociated nearby broadcasts, with deliberately experimental coarse battery estimates. Reports stay local and exclude names, addresses, IDs, and raw payloads. The Windows build workflow produces ZIPs and checksums and smoke-tests x64 startup; physical AirPods validation remains required.
 

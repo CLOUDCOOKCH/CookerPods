@@ -1,7 +1,12 @@
 namespace CookerPods.Diagnostic.Core;
 
+public sealed record TimestampedEstimate(DateTimeOffset ObservedAtUtc, ProximityEstimate Estimate);
+
 public sealed record NearbyCandidate(string Label, int Observations, DateTimeOffset LastSeenUtc,
-    int PayloadLength, ProximityEstimate? ExperimentalEstimate)
+    int PayloadLength, ProximityEstimate? ExperimentalEstimate,
+    ProximityDecodeOutcome LatestDecodeOutcome,
+    IReadOnlyDictionary<ProximityDecodeOutcome, int> DecodeOutcomes,
+    TimestampedEstimate? LastDecodedEstimate, IReadOnlyList<TimestampedEstimate> RecentDecodedEstimates)
 {
     public string Identity => "Unassociated nearby Apple proximity broadcast; not verified as your paired AirPods";
 }
@@ -11,40 +16,57 @@ public sealed record ScanObservations(int AppleManufacturerSections, int Ignored
 
 public sealed class ObservationCollector(int capacity = 32)
 {
+    public const int HistoryLimit = 8;
     private readonly object gate = new();
-    // Addresses are used only as transient radio keys. Never exposed by snapshots.
-    private readonly Dictionary<ulong, NearbyCandidate> candidates = [];
+    // Addresses are private transient radio keys. No snapshot exposes them.
+    private readonly Dictionary<ulong, CandidateState> candidates = [];
     private int sections, oversized, dropped;
-    private bool closed;
     private ScanObservations? frozen;
+
+    private sealed class CandidateState(string label)
+    {
+        public string Label { get; } = label;
+        public int Count { get; set; }
+        public DateTimeOffset LastSeen { get; set; } = DateTimeOffset.MinValue;
+        public int Length { get; set; }
+        public ProximityDecodeResult Latest { get; set; } = new(ProximityDecodeOutcome.UnsupportedPayloadLength, null);
+        public Dictionary<ProximityDecodeOutcome, int> Outcomes { get; } = [];
+        public List<TimestampedEstimate> History { get; } = [];
+
+        public NearbyCandidate Snapshot() => new(Label, Count, LastSeen, Length, Latest.Estimate,
+            Latest.Outcome, new Dictionary<ProximityDecodeOutcome, int>(Outcomes),
+            History.LastOrDefault(), History.ToArray());
+    }
 
     public void Observe(ulong transientAddress, ReadOnlySpan<byte> payload, DateTimeOffset seen)
     {
         lock (gate)
         {
-            if (closed) return;
+            if (frozen is not null) return;
             sections++;
             if (payload.Length > 512) { oversized++; return; }
             if (payload.Length == 0 || payload[0] != 0x07) return;
             if (!candidates.TryGetValue(transientAddress, out var current))
             {
                 if (candidates.Count >= capacity) { dropped++; return; }
-                current = new($"Nearby candidate {candidates.Count + 1}", 0, seen.ToUniversalTime(), payload.Length, null);
+                current = new($"Nearby candidate {candidates.Count + 1}");
+                candidates.Add(transientAddress, current);
             }
-            if (seen < current.LastSeenUtc)
+            var result = ProximityFrame.Analyze(payload);
+            current.Count++;
+            current.Outcomes[result.Outcome] = current.Outcomes.GetValueOrDefault(result.Outcome) + 1;
+            if (result.Estimate is { } estimate)
             {
-                candidates[transientAddress] = current with { Observations = current.Observations + 1 };
-                return;
+                current.History.Add(new(seen.ToUniversalTime(), estimate));
+                current.History.Sort((a, b) => a.ObservedAtUtc.CompareTo(b.ObservedAtUtc));
+                if (current.History.Count > HistoryLimit) current.History.RemoveAt(0);
             }
-            // A latest unknown format clears older estimates, rather than making
-            // an old battery value look like a fresh decode of the unknown frame.
-            candidates[transientAddress] = current with
-            {
-                Observations = current.Observations + 1,
-                LastSeenUtc = seen.ToUniversalTime(),
-                PayloadLength = payload.Length,
-                ExperimentalEstimate = ProximityFrame.Decode(payload)
-            };
+            if (seen < current.LastSeen) return;
+            // Unsupported latest data remains unknown. Historical estimates have
+            // separate timestamps and are never presented as a fresh decode.
+            current.LastSeen = seen.ToUniversalTime();
+            current.Length = payload.Length;
+            current.Latest = result;
         }
     }
 
@@ -53,12 +75,12 @@ public sealed class ObservationCollector(int capacity = 32)
         lock (gate)
         {
             if (frozen is not null) return frozen;
-            var snapshot = new ScanObservations(sections, oversized, dropped, candidates.Values.ToArray());
+            var snapshot = new ScanObservations(sections, oversized, dropped,
+                candidates.Values.Select(c => c.Snapshot()).ToArray());
             if (close)
             {
-                closed = true;
                 frozen = snapshot;
-                candidates.Clear(); // Remove private radio keys once observation ends.
+                candidates.Clear();
             }
             return snapshot;
         }

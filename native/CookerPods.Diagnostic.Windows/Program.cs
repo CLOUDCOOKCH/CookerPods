@@ -29,7 +29,7 @@ internal static class Program
             Console.Error.WriteLine("The hardware diagnostic requires Windows. No Bluetooth operation was attempted.");
             return 2;
         }
-        Console.WriteLine("CookerPods Windows connection lab — native preview 0.4.0");
+        Console.WriteLine("CookerPods Windows connection lab — native preview 0.4.1");
         Console.WriteLine("Read-only. Standard Windows APIs; no driver changes, administrator request, settings writes, or network listener.");
         Console.WriteLine("Reports exclude names, addresses, device IDs, and raw broadcasts. Nothing is uploaded.");
         Console.WriteLine("Paired device names are shown in this console only. Nearby candidates are NOT verified as your AirPods.\n");
@@ -63,7 +63,15 @@ internal static class Program
                 Console.WriteLine($"{candidate.Label}: {candidate.Observations} observation(s), last seen {candidate.LastSeenUtc:HH:mm:ss} UTC; identity UNASSOCIATED");
                 if (candidate.ExperimentalEstimate is { } estimate)
                     Console.WriteLine($"  Experimental: model code {estimate.ModelCode}; slot A {Percent(estimate.EarbudSlotAPercent)}, slot B {Percent(estimate.EarbudSlotBPercent)}, case {Percent(estimate.CasePercent)}. Left/right mapping unverified.");
-                else Console.WriteLine("  Battery format not recognized. No battery value is inferred.");
+                else Console.WriteLine($"  Latest frame is unknown: {candidate.LatestDecodeOutcome}. No current battery value is inferred.");
+                Console.WriteLine($"  First-check outcomes: {string.Join(", ", candidate.DecodeOutcomes.Select(p => $"{p.Key}={p.Value}"))}.");
+                if (candidate.LastDecodedEstimate is { } historical)
+                {
+                    var value = historical.Estimate;
+                    double age = Math.Max(0, (report.FinishedAtUtc!.Value - historical.ObservedAtUtc).TotalSeconds);
+                    Console.WriteLine($"  Most recent decoded sample: {historical.ObservedAtUtc:O} ({age:0.0}s old at scan end; may be stale).");
+                    Console.WriteLine($"  Historical slot A {Percent(value.EarbudSlotAPercent)}, slot B {Percent(value.EarbudSlotBPercent)}, case {Percent(value.CasePercent)}; identity and left/right mapping unverified.");
+                }
             }
             if (observations.Candidates.Count == 0)
                 Console.WriteLine("No proximity candidate received. This is inconclusive; the AirPods may not be broadcasting. It is not a zero-battery result.");
@@ -90,7 +98,7 @@ internal static class Program
 
     private static string Percent(int? value) => value is { } n ? $"about {n}%" : "unavailable";
 
-    private static void Help() => Console.WriteLine("CookerPods-Diagnostic [--seconds 10..120] [--all-paired] [--no-wait]\nDefault: 30-second passive scan, AirPods-named paired devices shown locally.\n--all-paired shows other paired names locally; no names are exported. No settings writes or network API.");
+    private static void Help() => Console.WriteLine("CookerPods-Diagnostic [--seconds 10..120] [--all-paired] [--no-wait]\nDefault: 30-second passive scan; three paired-device queries with names shown locally only for AirPods matches.\n--all-paired shows other paired names locally; no names are exported. No settings writes or network API.");
 
     private static async Task InspectAdapter(DiagnosticReport report, CancellationToken token)
     {
@@ -104,37 +112,77 @@ internal static class Program
         catch (Exception error) { report.Issues.Add(DiagnosticIssue.From("adapter", error)); }
     }
 
+    private static bool NameSuggestsAirPods(string name) => name.Contains("AirPods", StringComparison.OrdinalIgnoreCase);
+
     private static async Task InspectPairedDevices(DiagnosticReport report, bool allPaired, CancellationToken token)
+    {
+        await InspectPairedQuery(report, allPaired, "ClassicDeviceInterface",
+            BluetoothDevice.GetDeviceSelectorFromPairingState(true), false, token);
+        // Explicit endpoint queries supplement the default device-interface view.
+        // Protocol IDs and DeviceInformationKind are documented by Microsoft.
+        foreach (var (source, protocol) in new[]
+        {
+            ("ClassicAssociationEndpoint", "{e0cbf06c-cd8b-4647-bb8a-263b43f0f974}"),
+            ("LowEnergyAssociationEndpoint", "{bb7bb05e-5972-42b5-94fc-76eaa7084d49}")
+        })
+        {
+            string selector = $"System.Devices.Aep.ProtocolId:=\"{protocol}\" AND System.Devices.Aep.IsPaired:=System.StructuredQueryType.Boolean#True";
+            await InspectPairedQuery(report, allPaired, source, selector, true, token);
+        }
+        Console.WriteLine("Paired queries can overlap; their counts are not unique devices or confirmation of audio routing.");
+        Console.WriteLine("Every returned entry is reported anonymously (up to 32 per query). Use --all-paired to show other names locally.");
+    }
+
+    private static async Task InspectPairedQuery(DiagnosticReport report, bool allPaired,
+        string source, string selector, bool endpoints, CancellationToken token)
     {
         try
         {
-            string selector = BluetoothDevice.GetDeviceSelectorFromPairingState(true);
-            var devices = await DeviceInformation.FindAllAsync(selector).AsTask().WaitAsync(TimeSpan.FromSeconds(10), token);
-            report.PairedDevicesEnumerated = devices.Count;
-            int shown = 0;
-            foreach (var info in devices)
+            var devices = endpoints
+                ? await DeviceInformation.FindAllAsync(selector, ["System.Devices.Aep.IsConnected"],
+                    DeviceInformationKind.AssociationEndpoint).AsTask().WaitAsync(TimeSpan.FromSeconds(10), token)
+                : await DeviceInformation.FindAllAsync(selector).AsTask().WaitAsync(TimeSpan.FromSeconds(10), token);
+            if (!endpoints) report.PairedDevicesEnumerated = devices.Count;
+            int matches = devices.Count(d => NameSuggestsAirPods(d.Name));
+            var retained = devices.OrderByDescending(d => NameSuggestsAirPods(d.Name)).Take(32).ToArray();
+            report.PairedEnumeration.Add(new(source, devices.Count, retained.Length, matches, devices.Count > retained.Length));
+            Console.WriteLine($"{source}: {devices.Count} paired entry/entries; {matches} name match(es); {retained.Length} reported.");
+            int ordinal = 0, statusReads = 0;
+            foreach (var info in retained)
             {
                 token.ThrowIfCancellationRequested();
-                bool suggestsAirPods = info.Name.Contains("AirPods", StringComparison.OrdinalIgnoreCase);
-                if (!allPaired && !suggestsAirPods) continue;
-                string label = $"Paired candidate {++shown}";
-                string status = "NotRead";
-                try
+                bool suggestsAirPods = NameSuggestsAirPods(info.Name);
+                string label = $"{source} candidate {++ordinal}";
+                string status = "NotRead", statusSource = "NameFilterOrReadLimit";
+                if (endpoints)
                 {
-                    using var device = await BluetoothDevice.FromIdAsync(info.Id).AsTask().WaitAsync(TimeSpan.FromSeconds(5), token);
-                    status = device?.ConnectionStatus.ToString() ?? "AccessUnavailable";
+                    status = info.Properties.TryGetValue("System.Devices.Aep.IsConnected", out var value) && value is bool connected
+                        ? connected ? "Connected" : "Disconnected" : "NotReported";
+                    statusSource = "System.Devices.Aep.IsConnected";
                 }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception error) { report.Issues.Add(DiagnosticIssue.From("paired-device", error)); }
-                report.PairedDevices.Add(new(label, suggestsAirPods, status));
-                // Strip console control characters; names never enter the report.
-                string localName = new(info.Name.Where(c => !char.IsControl(c)).Take(100).ToArray());
-                Console.WriteLine($"{label}: {localName} — OS connection: {status}. Name matching is a heuristic.");
+                else if (suggestsAirPods && statusReads++ < 4)
+                {
+                    statusSource = "BluetoothDevice.ConnectionStatus";
+                    try
+                    {
+                        using var device = await BluetoothDevice.FromIdAsync(info.Id).AsTask().WaitAsync(TimeSpan.FromSeconds(5), token);
+                        status = device?.ConnectionStatus.ToString() ?? "AccessUnavailable";
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception error) { report.Issues.Add(DiagnosticIssue.From("paired-device-" + source, error)); }
+                }
+                // Include unmatched entries anonymously: a name filter must not
+                // turn an enumerated device into an unexplained empty report.
+                report.PairedDevices.Add(new(label, suggestsAirPods, status, source, statusSource));
+                if (allPaired || suggestsAirPods)
+                {
+                    string localName = new(info.Name.Where(c => !char.IsControl(c)).Take(100).ToArray());
+                    Console.WriteLine($"  {label}: {localName} — OS connection: {status}. Name matching is a heuristic.");
+                }
             }
-            if (shown == 0) Console.WriteLine("No paired friendly name contains AirPods. If renamed, run with --all-paired to inspect names locally.");
         }
         catch (OperationCanceledException) { throw; }
-        catch (Exception error) { report.Issues.Add(DiagnosticIssue.From("paired-enumeration", error)); }
+        catch (Exception error) { report.Issues.Add(DiagnosticIssue.From("paired-enumeration-" + source, error)); }
     }
 
     private static async Task ObserveBroadcasts(DiagnosticReport report, int seconds, CancellationToken token)

@@ -4,12 +4,17 @@ import argparse
 import hashlib
 import json
 import os
+import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 import shutil
 import subprocess
 from zipfile import ZIP_DEFLATED, ZipFile
 
 root = Path(__file__).resolve().parent.parent
+version = ET.parse(root / 'native/CookerPods.Diagnostic.Windows/CookerPods.Diagnostic.Windows.csproj').findtext('.//Version')
+if version is None or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
+    raise SystemExit('Native project Version must be three numeric components.')
 parser = argparse.ArgumentParser()
 parser.add_argument('--rid', choices=['win-x64', 'win-arm64'], action='append')
 args = parser.parse_args()
@@ -44,9 +49,9 @@ for rid in rids:
     shutil.copyfile(root / 'docs/native-windows.md', stage / 'README.md')
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
     dirty = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=root, text=True).strip())
-    metadata = {'version': '0.4.0-native-preview', 'rid': rid, 'sdk': subprocess.check_output([dotnet, '--version'], cwd=root, text=True).strip(), 'runtime': runtime_version, 'sourceCommit': commit if not dirty else None, 'sourceState': 'committed' if not dirty else 'uncommitted development build', 'signature': 'unsigned development preview', 'hardwareValidated': False}
+    metadata = {'version': version + '-native-preview', 'rid': rid, 'sdk': subprocess.check_output([dotnet, '--version'], cwd=root, text=True).strip(), 'runtime': runtime_version, 'sourceCommit': commit if not dirty else None, 'sourceState': 'committed' if not dirty else 'uncommitted development build', 'signature': 'unsigned development preview', 'hardwareValidated': False}
     (stage / 'BUILDINFO.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
-    archive = output / f'CookerPods-Diagnostic-0.4.0-preview-{rid}.zip'
+    archive = output / f'CookerPods-Diagnostic-{version}-preview-{rid}.zip'
     with ZipFile(archive, 'w', ZIP_DEFLATED, compresslevel=9) as bundle:
         for file in sorted(stage.iterdir()):
             if file.is_file() and file.suffix.lower() != '.pdb':
