@@ -1,12 +1,12 @@
 # AirPods noise controls on Windows: feasibility findings
 
-Research date: 15 October 2026. Target: the user's renamed AirPods Pro 2, Windows 11 25H2 on a private ARM64 PC. Current requirements remain standard Windows Bluetooth drivers and ordinary app privileges. This is a source-based feasibility review, not a hardware test of noise-control commands.
+Research date: 15 October 2026. Target: the user's renamed AirPods Pro 2, Windows 11 25H2 on a private ARM64 PC. This review evaluated the original standard-driver requirement; the user subsequently prioritized full Windows management, and [additional-driver development](control-development.md) is now underway. This is a source-based feasibility review, not a hardware test of noise-control commands.
 
 ## Result
 
 ANC, transparency and related controls are technically possible on Windows through Apple's private accessory protocol. The Windows implementations inspected use an **additional Bluetooth kernel profile driver** to expose its L2CAP channel to a normal app. No verified route using only the standard Windows app-facing Bluetooth APIs was found.
 
-That driver can sit alongside Microsoft's Bluetooth stack; it need not replace the whole Bluetooth adapter driver. It is nevertheless a custom driver and falls outside CookerPods' current requirements. The inspected NTPods driver targets x64, so it also does not supply the user's ARM64 control transport.
+That driver can sit alongside Microsoft's Bluetooth stack; it need not replace the whole Bluetooth adapter driver. It is nevertheless a custom driver and falls outside CookerPods' original standard-driver requirement. The inspected NTPods driver targets x64, so it also does not supply the user's ARM64 control transport.
 
 The existing 0.5.0 monitor remains useful without this driver. Receiving BLE battery advertisements, including during playback, does not establish a writable accessory-protocol connection.
 
@@ -40,9 +40,9 @@ The user subsequently clarified full Windows management as the goal. [Driver-bac
 
 Keep ANC/transparency controls out of a build that claims to require only standard drivers. A button, parser, service UUID or socket wrapper would not create the missing transport. There is no new control-enabled executable to test from this research.
 
-If the project later chooses an additional-driver architecture, the next concrete gate is **a properly distributed, compatible ARM64 profile driver that opens an AAP session on the actual PC while preserving normal audio**. Then verify exact firmware, current-mode notifications, one explicit reversible mode change and independent physical readback before enabling a control UI. Respect current-mode uncertainty and stop on failed/ambiguous readback. Driver support, signing, recovery and licensing must be resolved before an installation release; x64-only/test-signed examples are research references rather than a ready ARM64 dependency.
+The additional-driver development now has a concrete hardware gate: **a properly distributed, compatible ARM64 profile driver that opens an AAP session on the actual PC while preserving normal audio**. Then verify exact firmware, current-mode notifications, one explicit reversible mode change and independent physical readback before shipping usable controls. Respect current-mode uncertainty and stop on failed/ambiguous readback. Driver support, signing, recovery and licensing must be resolved before an installation release; x64-only/test-signed examples are research references rather than a ready ARM64 dependency.
 
-This would be a separately scoped driver project and a change to the current requirements. No driver or command code was copied into CookerPods. NTPods/LibrePods are GPL-3.0 projects; source access for research does not grant a permissive license to incorporate their implementation into the current MIT project. The older Airpods-Windows-Control repository has an MIT license, but its source is still used only as evidence here.
+This is a separate driver component and a change from the original requirements. CookerPods' implementation is original; no reference-project driver or command code was copied into it. NTPods/LibrePods are GPL-3.0 projects; source access for research does not grant a permissive license to incorporate their implementation into the current MIT project. The older Airpods-Windows-Control repository has an MIT license, but its source is still used only as evidence here.
 
 ## Source snapshots
 
