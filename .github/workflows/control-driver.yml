@@ -26,8 +26,16 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
           foreach ($arch in @('ARM64', 'x64')) {
-            & $msbuild native/CookerPods.Control.Driver/CookerPodsControl.vcxproj /m:2 /p:Configuration=Release /p:Platform=$arch /verbosity:minimal
-            if ($LASTEXITCODE -ne 0) { throw "Driver build failed: $arch" }
+            if (-not $msbuild) { throw 'Visual Studio MSBuild was not found' }
+            New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+            & $msbuild native/CookerPods.Control.Driver/CookerPodsControl.vcxproj /m:2 /p:Configuration=Release /p:Platform=$arch /verbosity:minimal 2>&1 | Tee-Object -FilePath "artifacts/driver-build-$arch.log"
+            if ($LASTEXITCODE -ne 0) {
+              Get-Content "artifacts/driver-build-$arch.log" -Tail 20 | ForEach-Object {
+                $line = ([string]$_).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+                Write-Output "::error title=Driver build $arch::$line"
+              }
+              throw "Driver build failed: $arch"
+            }
           }
       - name: Verify driver architecture and provenance
         shell: python
