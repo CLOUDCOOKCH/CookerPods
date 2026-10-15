@@ -11,6 +11,7 @@ public interface IAapTransport : IAsyncDisposable
 // reports can never be replaced by optimistic local toggle state.
 public sealed class AapController(IAapTransport transport, TimeProvider? timeProvider = null) : IAsyncDisposable
 {
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private readonly SemaphoreSlim lifecycle = new(1, 1), write = new(1, 1);
     private CancellationTokenSource? running;
     private Task? reader;
@@ -56,6 +57,7 @@ public sealed class AapController(IAapTransport transport, TimeProvider? timePro
 
     private async Task ReadLoop(long generation, CancellationToken cancellationToken)
     {
+        long openedAt = clock.GetTimestamp();
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -63,6 +65,8 @@ public sealed class AapController(IAapTransport transport, TimeProvider? timePro
                 var packet = await transport.ReceiveAsync(cancellationToken);
                 if (!packet.IsEmpty) State.Observe(generation, packet.Span);
                 else await Task.Delay(TimeSpan.FromMilliseconds(30), cancellationToken);
+                if (State.Snapshot().Phase == ControlPhase.AwaitingReports && clock.GetElapsedTime(openedAt) >= TimeSpan.FromSeconds(10))
+                    throw new TimeoutException("No recognized AAP status arrived after initialization.");
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }

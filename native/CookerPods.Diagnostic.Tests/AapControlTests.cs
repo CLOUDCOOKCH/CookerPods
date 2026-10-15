@@ -131,10 +131,22 @@ public sealed class AapControlTests
         public readonly List<byte[]> Writes=[];
         public readonly Channel<ReadOnlyMemory<byte>> Input=Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
         public bool Disposed;
+        public bool EmptyReceives;
         public ValueTask ConnectAsync(CancellationToken token)=>ValueTask.CompletedTask;
         public ValueTask SendAsync(ReadOnlyMemory<byte> p,CancellationToken token) {lock(Writes)Writes.Add(p.ToArray());return ValueTask.CompletedTask;}
-        public ValueTask<ReadOnlyMemory<byte>> ReceiveAsync(CancellationToken token)=>Input.Reader.ReadAsync(token);
+        public ValueTask<ReadOnlyMemory<byte>> ReceiveAsync(CancellationToken token)=>EmptyReceives ? ValueTask.FromResult<ReadOnlyMemory<byte>>(ReadOnlyMemory<byte>.Empty) : Input.Reader.ReadAsync(token);
         public ValueTask DisposeAsync(){Disposed=true;Input.Writer.TryComplete();return ValueTask.CompletedTask;}
+    }
+    [Fact]
+    public async Task SilentChannelFailsAndClosesRatherThanClaimingAControlSession()
+    {
+        var clock=new Clock();var t=new Transport { EmptyReceives=true };await using var c=new AapController(t,clock);
+        await c.ConnectAsync();Assert.Equal(ControlPhase.AwaitingReports,c.State.Snapshot().Phase);
+        clock.Advance(11);using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        while(!t.Disposed) await Task.Delay(1,timeout.Token);
+        Assert.Equal(ControlPhase.Failed,c.State.Snapshot().Phase);
+        Assert.Equal("TimeoutException",c.State.Snapshot().Issue!.Kind);
+        Assert.False(c.State.Snapshot().CanChangeNoiseMode);
     }
     [Fact]
     public async Task ExternalCancellationClosesTransportAndDisablesControls()

@@ -56,6 +56,7 @@ internal static class MonitorUiSmoke
         {
             RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
             foreach (var (scene, theme, width, scale) in new[]
             {
                 ("empty", "light", 700d, 1d), ("picker", "light", 700d, 1d), ("live", "dark", 700d, 1d),

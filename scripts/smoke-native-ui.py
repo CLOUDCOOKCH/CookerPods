@@ -19,6 +19,9 @@ if os.environ.get('GITHUB_STEP_SUMMARY'):
     with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as file:
         file.write('## Windows UI smoke (synthetic fixtures)\n\n```json\n' + summary + '\n```\n')
 print(summary)
+if result.returncode != 0 or not report.get('success'):
+    annotation = summary.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+    print('::error title=Windows UI smoke::' + annotation)
 assert result.returncode == 0 and report.get('success'), result.stderr
 assert len(report['captures']) == 8
 for capture in report['captures']:
