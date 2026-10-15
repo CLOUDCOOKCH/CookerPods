@@ -1,14 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <AssemblyName>CookerPods-Diagnostic</AssemblyName>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>CookerPods</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.4.2</Version>
+    <Version>0.5.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../CookerPods.Diagnostic.Core/CookerPods.Diagnostic.Core.csproj" />

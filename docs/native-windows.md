@@ -1,54 +1,47 @@
-# Windows diagnostic preview 0.4.2
+# Windows battery monitor preview 0.5.0
 
-The native path is now explicitly allowed by the project owner after browser GATT connection failures. This diagnostic tests standard Windows access; it is not yet a browser companion, continuous battery monitor, or AirPods settings application. A native program alone does not establish a usable AAP/L2CAP control transport.
+The native preview now opens a Windows app window with continuously observed, experimental battery estimates. It uses standard Windows Bluetooth drivers and ordinary user privileges. Renamed AirPods are not filtered out: the monitor does not query friendly names or require an AirPods name. No browser helper, server, driver, or settings/control transport is included.
 
 ## Download and run
 
-1. [Download preview 0.4.2](https://github.com/CLOUDCOOKCH/CookerPods/releases/tag/v0.4.2-native-preview). Choose `win-x64` for a normal Intel/AMD Windows 11 PC, or `win-arm64` for an ARM64 Windows PC. **Settings → System → About → System type** identifies the architecture; Bluetooth adapter brand alone does not establish CPU architecture.
-2. Extract the entire ZIP to a folder you can write to, then open **CookerPods-Diagnostic.exe**. This is a self-contained, unsigned development preview: no separate .NET SDK/runtime installation is required. Keep its license/notice files with it.
-3. Keep your existing Windows pairing and Bluetooth enabled. The program starts a 30-second broadcast observation immediately, while adapter and paired-device metadata are collected concurrently with an overall 20-second budget. Query messages can appear during the scan. For the first comparison, open the AirPods case nearby and take the earbuds out during the observation. Compare another run with the earbuds in the open case; record the physical state separately. Ctrl+C ends observation; it does not change pairing.
-4. Read the local results and open the report path printed at the end. Reports are saved under `%LOCALAPPDATA%\CookerPods\reports`. Inspect the JSON before sharing it. Nothing is uploaded automatically.
+1. [Download preview 0.5.0](https://github.com/CLOUDCOOKCH/CookerPods/releases/tag/v0.5.0-native-preview). Choose **win-arm64** for a Windows ARM PC, or **win-x64** for an Intel/AMD PC. Settings → System → About → System type identifies the architecture.
+2. Extract the entire ZIP, then open **CookerPods.exe**. The runtime is bundled; no separate .NET installation is needed. Keep the license and notice files with it. This is an unsigned development preview; managed-PC policy may require IT approval.
+3. Enable Windows Bluetooth and keep the existing AirPods pairing. Open the case nearby and take the earbuds out if no estimates appear. Compare candidate readings with a trusted battery reference, then explicitly choose a candidate. The app never selects automatically.
+4. Read approximate **earbud slot A**, **earbud slot B**, and **case** values. Slot A/B are not verified physical left/right. Values use coarse ten-point steps. An unavailable case shows a dash rather than zero. **Pause** stops observation; **Resume** waits for a new packet from the selected candidate. Closing the window stops the watcher.
+5. Use **Change** to choose again. A rotating address or a two-minute absence can expire a selection; the app does not silently follow another candidate. **Save report** writes a local JSON file only when you choose a path. Nothing uploads automatically.
 
-The unsigned preview may be blocked by a managed PC’s policy. Follow your organization’s approval process; this release does not change that policy.
+**Nearby candidates are not authenticated as your AirPods or associated with your Windows audio connection.** Comparing readings is a useful manual choice, not proof of ownership. Other nearby devices may produce similar values. The window has no paired-device name filter, audio routing, ANC controls, ear automation, charging indicators, or encrypted-payload decryption.
 
-The app requests ordinary-user execution (`asInvoker`), opens no listening port, and installs no service or driver. Deleting the extracted folder removes the executable. Delete `%LOCALAPPDATA%\CookerPods` to remove saved reports. A bundled single-file .NET executable can extract runtime libraries to the normal per-user temporary .NET directory; those are runtime cache files, not a Bluetooth driver.
+## Freshness, privacy and accessibility
 
-For renamed AirPods, open a terminal in the extracted folder and run:
+A selected estimate is live only when its decoded sample is at most 15 seconds old, the candidate has emitted a new packet during the current scan, and scanning is active. A newer unsupported frame makes the displayed older estimate historical. Stale/paused readings remain visible with their age and an explicit status; resuming alone never freshens them. Nearby entries expire after two minutes. The bounded 32-candidate collector evicts the least recently seen entry when full and never reuses its label during the session.
+
+Addresses are used only in memory to group nearby frames, then discarded on expiry/close. The monitor stores no friendly names, Windows device identifiers or raw broadcasts. Reports include anonymous candidate labels, timestamps, decoder outcomes, experimental estimates, sanitized source issues and explicit limitations. Inspect a report before sharing. No listening port, service, automatic upload or persistence of the selected candidate is provided.
+
+The resizable window follows Windows light/dark preference and high-contrast system colors, supports per-monitor DPI, keyboard controls, visible focus, accessible names and status announcements. A narrow window scrolls its content while keeping pause/report actions reachable. No formal accessibility conformance audit is claimed.
+
+The executable requests ordinary-user execution (`asInvoker`). Deleting its extracted folder removes the application. A bundled single-file .NET executable may extract libraries to the normal per-user temporary .NET cache. No Bluetooth driver is installed.
+
+## Optional diagnostic mode
+
+The earlier bounded diagnostic remains available for troubleshooting:
 
 ```powershell
-.\CookerPods-Diagnostic.exe --all-paired
+.\CookerPods.exe --diagnostic --seconds 30 --no-wait
+.\CookerPods.exe --diagnostic --all-paired --no-wait
 ```
 
-This shows other paired names in the console only, not in the exported report. Anonymous entries are now exported regardless of whether a name contains AirPods; name matching is not a report filter. Additional options are `--seconds 10` through `--seconds 120`, `--no-wait`, and `--help`. Default invocation keeps the console open at the end until Enter is pressed. Exit code zero means the diagnostic finished and saved its report, not that Bluetooth or AirPods passed every check. Review `issues`, `adapter`, `scanStartedAtUtc`, `metadataCompletion`, `metadataSeconds`, `watcherStopReason`, and `observations`. Metadata deadlines leave a partial diagnostic rather than delaying the beginning of broadcast capture.
+It starts passive observation immediately, collects adapter/paired metadata concurrently with a 20-second overall budget, and saves a schema 2 report under `%LOCALAPPDATA%\CookerPods\reports`. `--all-paired` permits names only in local console output, never in reports. A GUI-subsystem executable may not display console output when launched from Explorer; use the saved report or capture stdout/stderr from a developer subprocess. Diagnostic exit code zero means the report was saved, not that every Bluetooth check passed. Endpoint queries can overlap and cannot be summed as unique physical devices. The default live window does not run these metadata queries or create diagnostic report files.
 
-## What it checks
+## Hardware evidence and remaining limits
 
-- Windows default Bluetooth adapter and its reported LE/central-role support.
-- A Classic Bluetooth device-interface query plus explicit paired Classic/LE association-endpoint queries and their available OS connection properties. Friendly-name matching is a heuristic, not authenticated AirPods identification or audio-routing confirmation.
-- Passive Windows BLE manufacturer-data reception, separate from any GATT connection and from the Windows audio connection.
-- A deliberately limited experimental decoder for the documented Apple type `0x07`, 25-byte proximity-message layout. Other lengths, versions, and invalid battery values stay unknown. Coarse values use ten-point steps; 0xF is unavailable, not zero.
+On the user's private Windows ARM64 PC (Windows 11 build 26200), preview 0.4.0 received an unassociated 100/100/80 estimate that roughly matched an independent reading. Preview 0.4.2 subsequently decoded 39 samples, with recent slot values 90%/100% and unavailable case; the user again confirmed a rough match and reported renamed AirPods. This supports trying a manually selected monitor. It does not establish authenticated identity, physical left/right mapping, reliable charging state, continuous reception during playback/sleep, or performance with multiple nearby devices.
 
-Nearby candidates have temporary labels. Their addresses are used only in memory to group events, then discarded. **Candidates are not linked to your paired AirPods.** Rotating addresses may create several candidates for one device, or nearby devices may belong to someone else. The console/report therefore shows earbud **slot A/B**, not a claimed physical left/right mapping. Charging flags, encrypted battery data, ear-state automation, precise model names, and controls are not implemented.
+The 0.5.0 window still requires execution on the user's ARM64 hardware. Windows CI exercises the packaged x64 window and real WPF controls with explicitly synthetic frames, not real AirPods. Additional real tests should compare case open/closed, playback, pause/resume, sleep/resume and another nearby Apple device. No control features are enabled by these battery observations.
 
-Names, addresses, Windows device IDs, raw payloads, and exception messages are omitted from reports. Standard error type/HRESULT, OS version, process architecture, non-unique model code, scan counts, approximate fields, and timestamps remain. Up to 32 proximity candidates are retained; newer unrecognized frames clear the latest estimate. Up to eight prior decoded samples per candidate remain in a separate timestamped history, explicitly historical and potentially stale. No unrelated Apple payload is retained. No-data results are inconclusive, not evidence of a zero battery or an unsupported entire platform.
+## Developer build and validation
 
-## Reading a schema 2 report
-
-`experimentalEstimate` describes only the candidate’s latest received frame and is `null` when that frame is unsupported. `latestDecodeOutcome` records a decode outcome or the first failing check. `decodeOutcomes` counts all retained-candidate frames by that outcome, including older callbacks. The 0.4.1 `UnsupportedByte10` gate incorrectly treated the historical example value of an undefined suffix as required. In 0.4.2 a nonzero byte 10 does not invalidate the earlier, documented cleartext battery fields: it yields `DecodedWithNonzeroSuffix` and `hasNonzeroSuffix: true` only if length, prefix and battery range checks pass. Confidence then explicitly notes an unverified firmware layout. This is not evidence of encryption or decryption. Bytes 11–26 are ignored. Reserved battery nibbles still remain unknown, never percentages above 100.
-
-`lastDecodedEstimate` and `recentDecodedEstimates` preserve at most eight samples in event-time order, with `observedAtUtc` timestamps. They are not current readings. Compare their times with `finishedAtUtc`; a candidate’s newer `lastSeenUtc` must not make an older decode appear fresh. Fully unavailable battery fields remain unavailable even if the layout was decoded. This does not implement continuous monitoring or authenticated device association.
-
-`pairedEnumeration` reports counts separately for `ClassicDeviceInterface`, `ClassicAssociationEndpoint`, and `LowEnergyAssociationEndpoint`. `pairedDevicesEnumerated` retains its legacy meaning: the raw count from the first, device-interface query only. At most 32 anonymous entries per query are reported, prioritizing name matches. Endpoint watchers retain at most 128 entries in memory and report truncation if that buffer or the output limit is exceeded. For watcher queries, `enumerated` counts the entries in the retained snapshot, not all devices that ever emitted an event. Sources can describe the same physical device, so do not sum them as unique devices. A failed query produces an issue rather than a fabricated zero count. Endpoint watchers observe for up to five seconds and report `completion` as `InitialEnumerationCompleted`, `PartialAtDeadline`, `Canceled`, or `StoppedBeforeInitialEnumeration`, with `observationSeconds`. Added/updated/removed events contribute to the bounded snapshot. An empty partial snapshot is inconclusive. Watchers are closed, stopped, and detached so late callbacks cannot change an exported snapshot. Metadata as a whole is limited to 20 seconds and its completion/time are reported separately. Classic FindAll results use `FindAllCompleted`. Classic connection-status reads are limited to four name matches; unmatched entries remain `NotRead`. Endpoint queries use `System.Devices.Aep.IsConnected` when available. Every status records its source and does not establish active audio routing. `--all-paired` displays other names only in the local console.
-
-## Hardware acceptance still required
-
-The 0.4.0 preview executed on a user’s ARM64 Windows PC and received supported and unsupported proximity broadcasts. One unassociated 100/100/80 estimate roughly matched the user’s independent battery reference. This is limited feasibility evidence; it does not validate physical identity, repeatability, left/right mapping, charging behavior, or this updated release. No real AirPods or Windows radio is attached to the cloud build machine. A compiled preview and synthetic tests do not establish usable telemetry. Run on Windows 11 25H2 with the actual Bluetooth adapter and AirPods Pro 2. Record adapter/driver, AirPods variant/firmware, case/earbud positions, playback state, and a near-time trusted battery reference separately. Compare case open/closed, charging, playback, sleep/resume, and a second nearby Apple device before enabling any real monitor feature. Do not use administrator privileges to mask an access-denied result; report its stage/code.
-
-This preview is a native transport experiment. The next implementation gate is useful, correctly associated, repeatable real telemetry. Only then should a restricted, authenticated browser-to-companion interface be implemented. No API exposing arbitrary Bluetooth operations is provided.
-
-## Developer build
-
-The SDK is pinned in `global.json`. Linux cloud setup: `python3 scripts/setup-dotnet.py` downloads that SDK from Microsoft's official release metadata and verifies SHA-512 before extraction. Set `DOTNET_ROOT`, add it to `PATH`, and keep `DOTNET_CLI_HOME`/`NUGET_PACKAGES` in writable cache locations. End users do not need these tools.
+The SDK is pinned in `global.json`. `python3 scripts/setup-dotnet.py` installs it with official SHA-512 verification. Set `DOTNET_ROOT`, add it to PATH, and keep `DOTNET_CLI_HOME`/`NUGET_PACKAGES` writable. End users do not need developer tools.
 
 ```text
 dotnet restore native/CookerPods.Diagnostic.Tests --locked-mode
@@ -57,11 +50,11 @@ dotnet build native/CookerPods.Diagnostic.Windows -p:RestoreLockedMode=true
 python3 scripts/package-native.py
 ```
 
-Native projects share the supported Windows runtime-identifier list so self-contained publish and ordinary test/build restore graphs remain consistent. The package script uses locked restore, emits self-contained x64/ARM64 ZIPs with runtime notices and SHA-256 checksums, and does not mark local uncommitted builds as a committed source revision. `artifacts/native` contains disposable outputs. Do not commit binaries, reports, or captured device data.
+Linux can build and cross-publish the WPF app but cannot execute it. Packages include .NET and Windows Desktop runtime licenses/notices, BUILDINFO provenance and SHA-256 checksums. An intentional runtime update must also update the upstream notices under `native/notices`. Uncommitted builds are labeled accordingly. Do not commit binaries, reports or device captures.
 
-A matching `v<version>-native-preview` tag or explicit manual publish runs the gated release job. It verifies the downloaded build’s checksums, version, and source revision before publication; it does not replace an existing release.
+Windows CI runs native unit tests, publishes self-contained x64/ARM64 ZIPs, checks PE architectures, runs a bounded native diagnostic without assuming radio hardware, and exercises real WPF selection/pause/resume/change controls using synthetic fixtures. `--ui-smoke <directory>` is a developer-only explicit fixture mode; it never substitutes fake readings in the normal app. Client-area PNGs carry synthetic provenance, including light, dark, stale and narrow 200%-rendered captures. They do not establish actual monitor scaling at a physical 200% Windows desktop, screen-reader compatibility, or Bluetooth hardware behavior.
 
-Windows CI launches the packaged x64 executable with `--help`, then runs `scripts/smoke-native-windows.py`. The latter executes a ten-second diagnostic with a 60-second process deadline, validates that a new versioned report was written, and checks metadata bounds and early capture timing when the watcher starts. Bluetooth errors or absence are recorded in the report; this is an API/fallback smoke test without assumed radio hardware, not a hardware validation. ARM64 is cross-published and its PE architecture checked; it requires a real ARM64 run for execution validation. No code signing or physical-hardware validation is claimed.
+A matching `v<version>-native-preview` tag publishes tested packages after checksum/source-revision validation. `ui-review-<version>-<sha>` tags publish only synthetic review images/result metadata, with no app download, to make Windows UI evidence inspectable from this Linux environment.
 
 ## Protocol provenance
 

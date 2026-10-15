@@ -12,15 +12,16 @@ public sealed record NearbyCandidate(string Label, int Observations, DateTimeOff
 }
 
 public sealed record ScanObservations(int AppleManufacturerSections, int IgnoredOversizedSections,
-    int DroppedNewCandidates, IReadOnlyList<NearbyCandidate> Candidates);
+    int DroppedNewCandidates, IReadOnlyList<NearbyCandidate> Candidates, int EvictedCandidates = 0);
 
-public sealed class ObservationCollector(int capacity = 32)
+public sealed class ObservationCollector(int capacity = 32, bool evictOldest = false)
 {
     public const int HistoryLimit = 8;
     private readonly object gate = new();
     // Addresses are private transient radio keys. No snapshot exposes them.
     private readonly Dictionary<ulong, CandidateState> candidates = [];
-    private int sections, oversized, dropped;
+    private int sections, oversized, dropped, evicted;
+    private long labelSequence;
     private ScanObservations? frozen;
 
     private sealed class CandidateState(string label)
@@ -38,18 +39,23 @@ public sealed class ObservationCollector(int capacity = 32)
             History.LastOrDefault(), History.ToArray());
     }
 
-    public void Observe(ulong transientAddress, ReadOnlySpan<byte> payload, DateTimeOffset seen)
+    public string? Observe(ulong transientAddress, ReadOnlySpan<byte> payload, DateTimeOffset seen)
     {
         lock (gate)
         {
-            if (frozen is not null) return;
+            if (frozen is not null) return null;
             sections++;
-            if (payload.Length > 512) { oversized++; return; }
-            if (payload.Length == 0 || payload[0] != 0x07) return;
+            if (payload.Length > 512) { oversized++; return null; }
+            if (payload.Length == 0 || payload[0] != 0x07) return null;
             if (!candidates.TryGetValue(transientAddress, out var current))
             {
-                if (candidates.Count >= capacity) { dropped++; return; }
-                current = new($"Nearby candidate {candidates.Count + 1}");
+                if (candidates.Count >= capacity)
+                {
+                    if (!evictOldest || candidates.Count == 0) { dropped++; return null; }
+                    candidates.Remove(candidates.MinBy(p => p.Value.LastSeen).Key);
+                    evicted++;
+                }
+                current = new($"Nearby candidate {++labelSequence}");
                 candidates.Add(transientAddress, current);
             }
             var result = ProximityFrame.Analyze(payload);
@@ -61,12 +67,23 @@ public sealed class ObservationCollector(int capacity = 32)
                 current.History.Sort((a, b) => a.ObservedAtUtc.CompareTo(b.ObservedAtUtc));
                 if (current.History.Count > HistoryLimit) current.History.RemoveAt(0);
             }
-            if (seen < current.LastSeen) return;
+            if (seen < current.LastSeen) return current.Label;
             // Unsupported latest data remains unknown. Historical estimates have
             // separate timestamps and are never presented as a fresh decode.
             current.LastSeen = seen.ToUniversalTime();
             current.Length = payload.Length;
             current.Latest = result;
+            return current.Label;
+        }
+    }
+
+    public void PruneBefore(DateTimeOffset oldest)
+    {
+        lock (gate)
+        {
+            if (frozen is not null) return;
+            foreach (var key in candidates.Where(p => p.Value.LastSeen < oldest).Select(p => p.Key).ToArray())
+                candidates.Remove(key);
         }
     }
 
@@ -76,7 +93,7 @@ public sealed class ObservationCollector(int capacity = 32)
         {
             if (frozen is not null) return frozen;
             var snapshot = new ScanObservations(sections, oversized, dropped,
-                candidates.Values.Select(c => c.Snapshot()).ToArray());
+                candidates.Values.Select(c => c.Snapshot()).ToArray(), evicted);
             if (close)
             {
                 frozen = snapshot;

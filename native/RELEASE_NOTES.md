@@ -1,14 +1,14 @@
-The previous preview rejected every proximity frame with a nonzero byte 10, and two full endpoint queries could delay observation by 20 seconds. This update corrects that historical-example check and starts broadcast capture before metadata enumeration.
+# Windows battery monitor preview 0.5.0
 
-- The format reference calls byte 10 undefined, showing zero as an example rather than a required discriminator. Nonzero suffixes now produce `DecodedWithNonzeroSuffix` and `hasNonzeroSuffix: true` when the documented prefix, length and battery ranges pass. Confidence explicitly notes the unverified firmware layout. The encrypted tail is ignored, not decrypted; invalid values and unsupported prefixes still remain unknown.
-- Broadcast observation starts immediately, while metadata runs concurrently with a 20-second overall budget. `scanStartedAtUtc`, `metadataCompletion`, and `metadataSeconds` make this timing visible.
-- Paired endpoint discovery now uses five-second DeviceWatcher windows, preserving partial entries instead of awaiting a full snapshot. Per-query completion and observation times distinguish completed, partial, canceled and prematurely stopped queries. Empty partial snapshots do not establish absence. Watcher state is bounded, stopped and detached; names/IDs remain local.
-- Timestamped decode history and anonymous paired entries remain available. Counts do not establish unique physical devices or association with the user's AirPods.
+This preview opens a **Windows app window** for experimental live battery estimates. It follows the approximate native readings independently confirmed on the user's Windows ARM64 PC.
 
-Download **win-arm64** for a Windows ARM PC, or **win-x64** for an Intel/AMD PC. Extract the ZIP and run **CookerPods-Diagnostic.exe** with the existing Windows pairing. Open the case and take the earbuds out during the 30-second observation. Inspect and share the newly generated JSON from the local report path printed in the console. Nothing uploads automatically.
+- Choose a nearby candidate explicitly; renamed AirPods are not filtered out. Manual comparison does not authenticate ownership or Windows audio association.
+- Read coarse earbud slot A/B and case values. Physical left/right is unverified; unavailable case values stay unknown.
+- Estimates become stale after 15 seconds. Pause stops scanning; resume waits for a new packet. Address changes or two-minute expiry require a new choice.
+- Save a local report on request. No names, addresses, device IDs, raw payloads or automatic uploads. No ANC controls, ear automation, driver replacement, browser helper or administrator request.
 
-Validation includes synthetic decoder/privacy/concurrency tests, Windows builds, PE architecture checks, packaged x64 startup, and a time-limited Windows API/report smoke run without assumed Bluetooth hardware. Release downloads are checked against build metadata and SHA-256 checksums before publication. This updated ARM64 build still requires real-device testing, especially for frames with a nonzero suffix.
+Download **win-arm64** for Windows ARM, or **win-x64** for Intel/AMD. Extract the ZIP and run **CookerPods.exe**. Open the case nearby, take the earbuds out if needed, compare readings and choose the matching candidate. The runtime is bundled. The preview remains unsigned; managed-PC policy may require IT approval.
 
-This remains an **unsigned, read-only diagnostic** with experimental, unassociated battery estimates. No separate .NET installation, administrator request, driver changes, browser bridge, ANC controls, ear automation, or settings writes are included. Managed-PC policy may require IT approval.
+Validation: 48 native tests; clean WPF build; self-contained packaging with runtime licenses/notices; Windows x64 diagnostic/API smoke and real WPF control tests with labeled synthetic light/dark/stale/narrow captures. ARM64 PE architecture is checked, but this new window still needs a real ARM64 hardware run. Prior ARM64 battery reports are feasibility evidence, not validation of this GUI or authenticated device identity.
 
-[Usage, protocol provenance and limitations](https://github.com/CLOUDCOOKCH/CookerPods/blob/v0.4.2-native-preview/docs/native-windows.md).
+[Usage and limitations](https://github.com/CLOUDCOOKCH/CookerPods/blob/v0.5.0-native-preview/docs/native-windows.md). The earlier diagnostic is available via `CookerPods.exe --diagnostic --no-wait`.

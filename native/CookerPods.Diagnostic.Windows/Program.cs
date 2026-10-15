@@ -1,3 +1,4 @@
+using System.IO;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -9,9 +10,9 @@ using Windows.Storage.Streams;
 
 namespace CookerPods.Diagnostic.Windows;
 
-internal static class Program
+internal static class DiagnosticProgram
 {
-    private static async Task<int> Main(string[] args)
+    internal static async Task<int> RunAsync(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
         if (args.Contains("--help")) { Help(); return 0; }
@@ -29,7 +30,7 @@ internal static class Program
             Console.Error.WriteLine("The hardware diagnostic requires Windows. No Bluetooth operation was attempted.");
             return 2;
         }
-        Console.WriteLine("CookerPods Windows connection lab — native preview 0.4.2");
+        Console.WriteLine("CookerPods Windows connection lab — native preview 0.5.0");
         Console.WriteLine("Read-only. Standard Windows APIs; no driver changes, administrator request, settings writes, or network listener.");
         Console.WriteLine("Reports exclude names, addresses, device IDs, and raw broadcasts. Nothing is uploaded.");
         Console.WriteLine("Paired device names are shown in this console only. Nearby candidates are NOT verified as your AirPods.\n");
@@ -102,7 +103,7 @@ internal static class Program
 
     private static string Percent(int? value) => value is { } n ? $"about {n}%" : "unavailable";
 
-    private static void Help() => Console.WriteLine("CookerPods-Diagnostic [--seconds 10..120] [--all-paired] [--no-wait]\nDefault: immediate 30-second passive scan; concurrent metadata with a 20-second budget and paired endpoint windows up to 5 seconds; three paired-device queries with names shown locally only for AirPods matches.\n--all-paired shows other paired names locally; no names are exported. No settings writes or network API.");
+    private static void Help() => Console.WriteLine("CookerPods --diagnostic [--seconds 10..120] [--all-paired] [--no-wait]\nDefault: immediate 30-second passive scan; concurrent metadata with a 20-second budget and paired endpoint windows up to 5 seconds; three paired-device queries with names shown locally only for AirPods matches.\n--all-paired shows other paired names locally; no names are exported. No settings writes or network API.");
 
     private static async Task InspectMetadata(DiagnosticReport report, bool allPaired, CancellationToken token)
     {

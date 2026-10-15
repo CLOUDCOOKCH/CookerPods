@@ -19,7 +19,7 @@ public sealed record AdapterObservation(bool Found, bool? LowEnergySupported, bo
 public sealed class DiagnosticReport
 {
     public int SchemaVersion { get; } = 2;
-    public string ProbeVersion { get; } = "0.4.2-native-preview";
+    public string ProbeVersion { get; } = NativeBuild.Version;
     public DateTimeOffset StartedAtUtc { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? FinishedAtUtc { get; set; }
     public string? WindowsVersion { get; init; }

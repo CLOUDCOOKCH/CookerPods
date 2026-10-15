@@ -1,12 +1,14 @@
 # CookerPods connection lab
 
-Read-only feasibility diagnostics for AirPods access on Windows. The original website tests browser APIs. After the browser connection failures, an optional native Windows preview now tests standard Windows device and advertisement APIs. Neither diagnostic is a working AirPods manager or a simulated device dashboard.
+Experimental AirPods battery monitoring for Windows, with a separate browser feasibility lab. After browser GATT access failed, the user authorized native installation and confirmed that approximate native battery readings roughly match a trusted reference.
 
-## Native Windows preview
+## Native Windows monitor preview
 
-[Download the Windows diagnostic preview](https://github.com/CLOUDCOOKCH/CookerPods/releases/tag/v0.4.2-native-preview).
+[Download the Windows monitor](https://github.com/CLOUDCOOKCH/CookerPods/releases/tag/v0.5.0-native-preview), extract the ZIP, and run **CookerPods.exe**. Choose ARM64 for a Windows ARM PC or x64 for Intel/AMD.
 
-See [download/run instructions and limitations](docs/native-windows.md). The self-contained x64/ARM64 preview needs no separately installed .NET runtime, driver replacement, or administrator request. It has no browser bridge or network API yet. It records paired-device status separately from unassociated nearby broadcasts, with deliberately experimental coarse battery estimates. Reports stay local and exclude names, addresses, IDs, and raw payloads. The Windows build workflow produces ZIPs and checksums and smoke-tests x64 startup; physical AirPods validation remains required.
+The window observes nearby battery broadcasts using standard Windows drivers. Explicitly select a candidate by comparing its approximate readings; renamed AirPods are not filtered out. Slot A/B are not verified left/right, unknown case values remain unknown, and readings become stale after 15 seconds. Candidate selection does not authenticate ownership or confirm Windows audio routing. Pause/close stops scanning; reports are saved locally only on request.
+
+See [usage, privacy, evidence and limitations](docs/native-windows.md). The self-contained, unsigned preview needs no separate .NET runtime or administrator request. It includes no ANC controls, ear automation, custom driver, browser bridge or network API. The earlier bounded diagnostic remains available with `--diagnostic`.
 
 ## Browser-only website
 

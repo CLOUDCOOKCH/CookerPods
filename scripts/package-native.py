@@ -12,7 +12,11 @@ import subprocess
 from zipfile import ZIP_DEFLATED, ZipFile
 
 root = Path(__file__).resolve().parent.parent
-version = ET.parse(root / 'native/CookerPods.Diagnostic.Windows/CookerPods.Diagnostic.Windows.csproj').findtext('.//Version')
+project = ET.parse(root / 'native/CookerPods.Diagnostic.Windows/CookerPods.Diagnostic.Windows.csproj')
+version = project.findtext('.//Version')
+assembly = project.findtext('.//AssemblyName')
+if assembly != 'CookerPods':
+    raise SystemExit('Unexpected native assembly name.')
 if version is None or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
     raise SystemExit('Native project Version must be three numeric components.')
 parser = argparse.ArgumentParser()
@@ -39,25 +43,35 @@ for rid in rids:
         '--output', str(stage), '--verbosity', 'minimal'], cwd=root, check=True)
     assets = json.loads((root / 'native/CookerPods.Diagnostic.Windows/obj/project.assets.json').read_text())
     downloads = [item for framework in assets['project']['frameworks'].values() for item in framework.get('downloadDependencies', [])]
-    runtime = next(d for d in downloads if d['name'].lower() == f'microsoft.netcore.app.runtime.{rid}')
-    runtime_version = runtime['version'].strip('[] ').split(',')[0].strip()
-    pack = nuget_root / runtime['name'].lower() / runtime_version
-    for name in ['LICENSE.TXT', 'THIRD-PARTY-NOTICES.TXT']:
-        shutil.copyfile(pack / name, stage / ('DOTNET-' + name))
+    runtimes = {}
+    for package, prefix in [('microsoft.netcore.app.runtime.', 'DOTNET'), ('microsoft.windowsdesktop.app.runtime.', 'WINDOWSDESKTOP')]:
+        runtime = next(d for d in downloads if d['name'].lower() == package + rid)
+        runtime_version = runtime['version'].strip('[] ').split(',')[0].strip()
+        runtimes[prefix] = runtime_version
+        pack = nuget_root / runtime['name'].lower() / runtime_version
+        license_file = next(file for file in pack.iterdir() if file.name.lower() in ['license', 'license.txt'])
+        shutil.copyfile(license_file, stage / (prefix + '-LICENSE.TXT'))
+        if prefix == 'DOTNET':
+            shutil.copyfile(pack / 'THIRD-PARTY-NOTICES.TXT', stage / 'DOTNET-THIRD-PARTY-NOTICES.TXT')
+        else:
+            notices = root / 'native/notices' / ('windowsdesktop-' + runtime_version)
+            for component in ['WPF', 'WINFORMS']:
+                shutil.copyfile(notices / (component + '-THIRD-PARTY-NOTICES.TXT'), stage / (component + '-THIRD-PARTY-NOTICES.TXT'))
+    runtime_version = runtimes['DOTNET']
     shutil.copyfile(root / 'LICENSE', stage / 'LICENSE-CookerPods.txt')
     shutil.copyfile(root / 'native/THIRD_PARTY_NOTICES.md', stage / 'THIRD_PARTY_NOTICES.md')
     shutil.copyfile(root / 'docs/native-windows.md', stage / 'README.md')
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
     dirty = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=root, text=True).strip())
-    metadata = {'version': version + '-native-preview', 'rid': rid, 'sdk': subprocess.check_output([dotnet, '--version'], cwd=root, text=True).strip(), 'runtime': runtime_version, 'sourceCommit': commit if not dirty else None, 'sourceState': 'committed' if not dirty else 'uncommitted development build', 'signature': 'unsigned development preview', 'hardwareValidated': False}
+    metadata = {'version': version + '-native-preview', 'rid': rid, 'sdk': subprocess.check_output([dotnet, '--version'], cwd=root, text=True).strip(), 'runtime': runtime_version, 'desktopRuntime': runtimes['WINDOWSDESKTOP'], 'sourceCommit': commit if not dirty else None, 'sourceState': 'committed' if not dirty else 'uncommitted development build', 'signature': 'unsigned development preview', 'hardwareValidated': False}
     (stage / 'BUILDINFO.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
-    archive = output / f'CookerPods-Diagnostic-{version}-preview-{rid}.zip'
+    archive = output / f'{assembly}-{version}-preview-{rid}.zip'
     with ZipFile(archive, 'w', ZIP_DEFLATED, compresslevel=9) as bundle:
-        for file in sorted(stage.iterdir()):
+        for file in sorted(stage.rglob('*')):
             if file.is_file() and file.suffix.lower() != '.pdb':
-                bundle.write(file, file.name)
+                bundle.write(file, file.relative_to(stage).as_posix())
     with ZipFile(archive) as bundle:
-        if bundle.testzip() is not None or 'CookerPods-Diagnostic.exe' not in bundle.namelist():
+        if bundle.testzip() is not None or 'CookerPods.exe' not in bundle.namelist():
             raise SystemExit('Package integrity check failed')
     with archive.open('rb') as file:
         checksum = hashlib.file_digest(file, 'sha256').hexdigest()

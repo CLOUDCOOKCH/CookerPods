@@ -4,7 +4,7 @@
 
 ## Platform
 
-web
+web diagnostic; Windows desktop monitor
 
 ## Users
 
@@ -12,7 +12,7 @@ The intended user wants to manage AirPods directly in a browser, with an experie
 
 ## Product Purpose
 
-CookerPods currently provides read-only transport feasibility diagnostics. The website tests browser access; after repeated browser GATT failures the user explicitly authorized trying native installation. A self-contained Windows diagnostic now tests ordinary Windows device/advertisement APIs. A functional AirPods manager remains the goal; neither diagnostic establishes a verified control transport.
+CookerPods provides a browser feasibility lab and an experimental Windows battery monitor. Repeated browser GATT failures led the user to authorize native installation; independently confirmed coarse readings then justified a native app window with explicit nearby-candidate selection. No verified AirPods control transport is established.
 
 ## Operating Context
 
@@ -21,13 +21,13 @@ Visitors open an HTTPS static page and explicitly select a device in a browser c
 ## Capabilities and Constraints
 
 - The website remains installation-free. The user has now explicitly allowed a separate native Windows preview after browser-only access failed. Standard Windows drivers and ordinary user privileges remain the baseline; no extension, custom driver, mandatory PWA, or experimental browser flags are introduced.
-- The native preview has no browser bridge, listening endpoint, settings writes, or cloud backend. Paired-device status and nearby broadcast candidates are separate. Experimental battery estimates are unassociated and do not establish physical left/right mapping. See `docs/native-windows.md` for the hardware gate.
+- The native monitor uses explicit anonymous nearby-candidate selection independent of friendly names, including renamed AirPods. It marks estimates stale after 15 seconds, expires candidates after two minutes, and stops scanning on pause/close. Case unavailability remains unknown. It has no browser bridge, listening endpoint, settings writes, or cloud backend. Paired-device status and nearby broadcast candidates are separate. Experimental battery estimates are unassociated and do not establish physical left/right mapping. See `docs/native-windows.md` for the hardware gate.
 - The diagnostic requests standard Battery and Device Information services and may read one unassigned battery sample, model, and firmware. It sends no settings commands. Selection and GATT connection do not establish AirPods identity, active Windows audio status, or management support.
 - **Find previously allowed devices** uses `navigator.bluetooth.getDevices()` where available to list this origin's existing grants in the current browser profile. A per-device **Check** reuses that grant without reopening the chooser or adding service/manufacturer permissions. This does not list Windows-paired devices, guarantee a GATT connection, or establish AirPods support. First-time website access still requires the browser chooser.
 - Optional Apple manufacturer-data permission permits a 20-second observation of the selected device where supported. No general scan, raw-data export, decryption, or battery decoding is implemented. API presence and zero received events are inconclusive.
 - The optional Web Serial chooser only inspects a selected port; it never opens or writes to it. An AirPods equivalent to ear-web's Nothing serial transport has not been established.
 - Reports exclude device names, addresses, browser IDs, raw broadcasts, and raw exception messages. Model and firmware strings may be included. There is no backend, analytics, or automatic upload.
-- Live monitoring requires useful, correctly associated, repeatable telemetry on real hardware. Controls require a separately demonstrated command transport and physical readback. See `docs/research.md` for the hardware gate.
+- The experimental monitor permits a manual comparison-based candidate choice; authenticated device association and continuous real-hardware reliability remain unverified. Controls require a separately demonstrated command transport and physical readback. See `docs/research.md` for the hardware gate.
 
 ## Brand Commitments
 
@@ -35,12 +35,12 @@ CookerPods is independent, open-source research, unaffiliated with Apple. The us
 
 ## Evidence on Hand
 
-`index.html`, `styles.css`, `app.js`, `probe.js`, `README.md`, and `docs/` describe the implemented diagnostic. Unit and browser integration checks use mocked browser hardware APIs; they do not validate AirPods support. Review captures in `/tmp/cookerpods-review/` show desktop initial, mobile connected, and desktop dark connected states with mocked devices, including an intentionally malicious name rendered as plain text. These captures are temporary development evidence, not product proof. Real Windows/Edge/Intel/AirPods Pro 2 hardware testing remains outstanding.
+`index.html`, `styles.css`, `app.js`, `probe.js`, `README.md`, and `docs/` describe the implemented diagnostic. Unit and browser integration checks use mocked browser hardware APIs; they do not validate AirPods support. Review captures in `/tmp/cookerpods-review/` show desktop initial, mobile connected, and desktop dark connected states with mocked devices, including an intentionally malicious name rendered as plain text. These captures are temporary development evidence, not product proof. Browser hardware tests failed to establish GATT access. Native 0.4.0 and 0.4.2 ARM64 reports yielded approximate readings the user independently confirmed. The 0.5.0 window requires a new ARM64 hardware run; synthetic WPF captures validate layout/controls only. See docs/native-windows.md.
 
 ## Product Principles
 
 - Establish a working browser transport before promising features.
-- Preserve the browser-only constraint through research and implementation.
+- Keep the installation-free browser lab separate from the explicitly authorized native window.
 - Distinguish observations, permissions, device identity, and actual capabilities.
 - Keep device access explicit and reports local, minimal, and inspectable.
 
