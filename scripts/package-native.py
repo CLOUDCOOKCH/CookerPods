@@ -60,7 +60,7 @@ for rid in rids:
     runtime_version = runtimes['DOTNET']
     shutil.copyfile(root / 'LICENSE', stage / 'LICENSE-CookerPods.txt')
     shutil.copyfile(root / 'native/THIRD_PARTY_NOTICES.md', stage / 'THIRD_PARTY_NOTICES.md')
-    shutil.copyfile(root / 'docs/native-windows.md', stage / 'README.md')
+    shutil.copyfile(root / 'native/PREVIEW_README.md', stage / 'README.md')
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
     dirty = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=root, text=True).strip())
     metadata = {'version': version + '-native-preview', 'rid': rid, 'sdk': subprocess.check_output([dotnet, '--version'], cwd=root, text=True).strip(), 'runtime': runtime_version, 'desktopRuntime': runtimes['WINDOWSDESKTOP'], 'sourceCommit': commit if not dirty else None, 'sourceState': 'committed' if not dirty else 'uncommitted development build', 'signature': 'unsigned development preview', 'hardwareValidated': False}
