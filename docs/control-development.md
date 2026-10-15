@@ -40,6 +40,8 @@ The core suite has 62 passing tests covering bounded packet parsing, unknown val
 
 Review captures cover empty, picker, live, stale and narrow battery views plus wide, pending and narrow control views. Their JSON and PNG provenance identifies the source revision and synthetic fixture. Client-area rendering at 2x is not physical Windows DPI validation. Screen-reader execution and physical mode changes are not established by the captures or programmatic UI Automation name checks.
 
+The final [Windows capture/test run](https://github.com/CLOUDCOOKCH/CookerPods/actions/runs/38708401899) and [main-branch Windows run](https://github.com/CLOUDCOOKCH/CookerPods/actions/runs/38708399862) passed at source `406095b369b4f21790596b47d06ff6362e43d236`. The [synthetic review images](https://github.com/CLOUDCOOKCH/CookerPods/releases/tag/ui-review-0.6.0-406095b) contain no app download. A fresh delegated UI review found three issues; its verdict scored the corrected disconnect message, setting action names and product-details copy resolved, with `ship` limited to those scored fixes. It does not approve real driver loading or claim full management is ready.
+
 ## Developer diagnostic
 
 ```powershell
