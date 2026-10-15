@@ -24,7 +24,7 @@ jobs:
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find MSBuild\Current\Bin\amd64\MSBuild.exe | Select-Object -First 1
           $stamp = Get-ChildItem artifacts/wdk-packages/Microsoft.Windows.WDK.x64.10.0.26100.6584 -Recurse -Filter stampinf.exe | Where-Object { $_.FullName -match '[\\/]x64[\\/]' } | Select-Object -First 1
           if (-not $stamp) { throw 'Pinned x64 WDK stampinf tool was not found' }
           $env:PATH = $stamp.Directory.FullName + ';' + $env:PATH
