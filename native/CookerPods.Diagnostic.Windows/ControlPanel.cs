@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using CookerPods.Diagnostic.Core;
 
 namespace CookerPods.Diagnostic.Windows;
@@ -26,12 +27,15 @@ internal sealed class ControlPanel : StackPanel, IAsyncDisposable
     internal IReadOnlyDictionary<NoiseMode, Button> ModeButtons => modes;
     internal Button SettingButton(AapSetting setting) => settings[setting].Action;
     internal AapControlSnapshot? Snapshot => controller?.State.Snapshot();
+    internal string ChangeStatus => result.Text;
 
     internal ControlPanel(Func<IReadOnlyList<ControlDevice>>? enumerate = null,
         Func<ControlDevice, IAapTransport>? transport = null)
     {
         this.enumerate = enumerate ?? DriverAapTransport.Enumerate;
         this.transport = transport ?? (device => new DriverAapTransport(device));
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
+        AutomationProperties.SetLiveSetting(result, AutomationLiveSetting.Polite);
         status.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
         status.Margin = new Thickness(0, 0, 0, 10); Children.Add(status);
         services.SetResourceReference(BackgroundProperty, "Surface");
@@ -138,14 +142,14 @@ internal sealed class ControlPanel : StackPanel, IAsyncDisposable
         refresh.IsEnabled = !busy && !disposed && controller is null;
         services.IsEnabled = !busy && controller is null;
         services.Visibility = controller is null ? Visibility.Visible : Visibility.Collapsed;
-        if (s is not null) status.Text = s.Phase switch
+        if (s is not null) Announce(status, s.Phase switch
         {
             ControlPhase.Connecting => "Connecting to the paired control service…",
             ControlPhase.AwaitingReports => "Channel open — waiting for AirPods status",
             ControlPhase.Ready => "Receiving device-reported status",
             ControlPhase.Failed => "Control connection failed. Reported values are historical; disconnect, then try again.",
             _ => "Control session disconnected"
-        };
+        });
         reported.Text = "Reported mode: " + (s?.ReportedNoiseMode is { } m ? ModeName(m) : "unknown")
             + (s is not null && s.Phase is ControlPhase.Disconnected or ControlPhase.Failed ? " (historical)" : "");
         foreach (var (mode, button) in modes)
@@ -154,14 +158,14 @@ internal sealed class ControlPanel : StackPanel, IAsyncDisposable
             button.IsEnabled = !busy && !disposed && s?.CanRequestMode(mode) == true && s.ReportedNoiseMode != mode;
             AutomationProperties.SetHelpText(button, mode == NoiseMode.Adaptive && s?.AdaptiveReported != true ? "Available after the device has reported Adaptive mode in this connection." : "Requests this mode. The reported mode changes only after a device report.");
         }
-        result.Text = s?.LastCommandOutcome switch
+        Announce(result, s?.LastCommandOutcome switch
         {
-            CommandOutcome.Pending => "Change requested — waiting for a matching device report…",
+            CommandOutcome.Pending => $"Requested: {RequestedChange(s.Pending)}. Waiting for a matching device report…",
             CommandOutcome.DeviceReported => "Device reported the requested setting. Physical effect still needs verification.",
             CommandOutcome.Unconfirmed => "Change unconfirmed. Check the device-reported state before trying again.",
             CommandOutcome.Interrupted => "Connection interrupted; the change was not confirmed.",
             _ => "Choose a mode after the device reports its current setting."
-        };
+        });
         foreach (var (setting, row) in settings)
         {
             bool? value = setting == AapSetting.EarDetection ? s?.ReportedEarDetection : s?.ReportedConversationAwareness;
@@ -173,6 +177,20 @@ internal sealed class ControlPanel : StackPanel, IAsyncDisposable
         battery.Text = s is null || s.Battery.IsEmpty ? "Device-reported battery: unknown" : "Device-reported battery: " +
             string.Join(" · ", s.Battery.Select(b => $"{b.Component} {(b.Percent.HasValue ? $"{b.Percent}%" : "unavailable")}"));
         presence.Text = $"Ear presence: primary {Presence(s?.PrimaryPresence)}, secondary {Presence(s?.SecondaryPresence)}";
+    }
+    private static string RequestedChange(PendingControl? pending) => pending?.Attribute switch
+    {
+        0x0d => ModeName((NoiseMode)pending.Value),
+        (byte)AapSetting.EarDetection => "ear detection " + (pending.Value == 1 ? "on" : "off"),
+        (byte)AapSetting.ConversationAwareness => "conversation awareness " + (pending.Value == 1 ? "on" : "off"),
+        _ => "setting change"
+    };
+    private static void Announce(TextBlock target, string message)
+    {
+        if (target.Text == message) return;
+        target.Text = message;
+        if (AutomationPeer.ListenerExists(AutomationEvents.LiveRegionChanged))
+            UIElementAutomationPeer.CreatePeerForElement(target)?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
     private static string Presence(PodPresence? value) => value switch
     { PodPresence.InEar => "in ear", PodPresence.OutOfEar => "out of ear", PodPresence.InCase => "in case", _ => "unknown" };

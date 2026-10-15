@@ -85,6 +85,8 @@ internal static class MonitorUiSmoke
                     controls.ModeButtons[NoiseMode.Transparency].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     PumpUntil(window, () => controls.Snapshot?.LastCommandOutcome == CommandOutcome.Pending);
                     Require(controls.Snapshot?.ReportedNoiseMode == NoiseMode.NoiseCancellation, "Sending a mode must not optimistically change its reported state.");
+                    window.RefreshNow();
+                    Require(controls.ChangeStatus.Contains("Requested: Transparency"), "Pending text must name the requested mode separately from reported state.");
                     if (scene != "pending")
                     {
                         controlTransport.Emit(0x0d, 3);
